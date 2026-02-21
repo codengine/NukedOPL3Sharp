@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>netstandard2.1;net8.0</TargetFrameworks>
+        <RootNamespace>NukedOPL3Sharp</RootNamespace>
+        <AssemblyName>NukedOPL3Sharp</AssemblyName>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Title>NukedOPL3Sharp</Title>
+        <Authors>Stefan Hueg</Authors>
+        <Description>A C# port of nukeykt's Nuked-OPL3 implementation</Description>
+        <Copyright>2025-2026 Stefan Hueg &amp; nukeykt</Copyright>
+        <PackageProjectUrl>https://github.com/codengine/NukedOPL3Sharp</PackageProjectUrl>
+        <PackageLicenseExpression>LGPL-2.1-only</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/codengine/NukedOPL3Sharp</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageTags>opl3;fm;synth;emulator</PackageTags>
+        <Company>codengine</Company>
+        <AssemblyVersion>1.0.0</AssemblyVersion>
+        <FileVersion>1.0.0</FileVersion>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="..\\LICENSE" Pack="true" PackagePath=""/>
+        <None Include="..\\README.md" Pack="true" PackagePath=""/>
+        <None Include="..\\THIRD_PARTY_NOTICES.md" Pack="true" PackagePath=""/>
+    </ItemGroup>
+
+</Project>

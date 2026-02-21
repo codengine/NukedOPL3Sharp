@@ -1,0 +1,136 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:NukedOPL3Sharp.MidiPlayer.Models"
+        xmlns:vm="clr-namespace:NukedOPL3Sharp.MidiPlayer.ViewModels"
+        x:Class="NukedOPL3Sharp.MidiPlayer.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="900" Height="700"
+        Title="MIDI Player (Nuked OPL3)">
+    <Grid ColumnDefinitions="2*,3*" RowDefinitions="Auto,*,Auto,Auto">
+        <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="12" Background="#121212">
+            <TextBlock Text="{Binding StatusText}" Foreground="White" />
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="0" Padding="12">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Open File…" Command="{Binding OpenFileCommand}" />
+                    <Button Content="Patch Bank…" Command="{Binding OpenPatchBankCommand}" />
+                    <Button Content="Clear" Command="{Binding ClearTracksCommand}" />
+                </StackPanel>
+
+                <ListBox Margin="0,10,0,0"
+                         Name="TracksList"
+                         ItemsSource="{Binding Tracks}"
+                         SelectedItem="{Binding SelectedTrack}"
+                         DoubleTapped="TracksList_DoubleTapped">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="models:TrackItem">
+                            <TextBlock Text="{Binding DisplayName}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="1" Padding="12">
+            <StackPanel Spacing="12">
+                <TextBlock FontSize="18" Text="{Binding NowPlayingText}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Play" Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" />
+                    <Button Content="Pause" Command="{Binding PauseCommand}" IsEnabled="{Binding CanPause}" />
+                    <Button Content="Stop" Command="{Binding StopCommand}" IsEnabled="{Binding CanStop}" />
+                    <ToggleSwitch Content="Loop" IsChecked="{Binding LoopEnabled}" />
+                </StackPanel>
+
+                <StackPanel>
+                    <TextBlock Text="{Binding TimeText}" />
+                    <Slider Minimum="0"
+                            Name="SeekSlider"
+                            Maximum="{Binding SeekMaximumSeconds}"
+                            Value="{Binding SeekPositionSeconds, Mode=TwoWay}"
+                            IsEnabled="{Binding CanSeek}" />
+                </StackPanel>
+
+                <StackPanel>
+                    <TextBlock Text="{Binding VolumeText}" />
+                    <Slider Minimum="0" Maximum="1"
+                            Value="{Binding Volume, Mode=TwoWay}" />
+                </StackPanel>
+
+                <Border Padding="10" BorderBrush="#333333" BorderThickness="1" CornerRadius="6">
+                    <StackPanel Spacing="8">
+                        <DockPanel>
+                            <TextBlock Text="OPL3 Controls" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                            <Button Content="Reset"
+                                    Command="{Binding ResetOplControlsCommand}"
+                                    DockPanel.Dock="Right"
+                                    ToolTip.Tip="Resets the OPL3 global control bits (0x08 NTS, 0xBD AM/VIB depth + rhythm + drums) to defaults used by this player." />
+                        </DockPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <ToggleSwitch Content="Tremolo depth"
+                                          IsChecked="{Binding OplTremoloDepth}"
+                                          ToolTip.Tip="OPL global AM depth (0xBD bit 7). Increases tremolo LFO depth for operators with AM enabled (set by instrument patches)." />
+                            <ToggleSwitch Content="Vibrato depth"
+                                          IsChecked="{Binding OplVibratoDepth}"
+                                          ToolTip.Tip="OPL global VIB depth (0xBD bit 6). Increases vibrato LFO depth for operators with VIB enabled (set by instrument patches)." />
+                            <ToggleSwitch Content="Stereo"
+                                          IsChecked="{Binding OplStereoEnabled}"
+                                          ToolTip.Tip="Player-side stereo routing. When off, voices output center/mono (ignores MIDI pan). This is not the OPL3 stereo-extension feature." />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <ToggleSwitch Content="Rhythm mode"
+                                          IsChecked="{Binding OplRhythmMode}"
+                                          ToolTip.Tip="Enables OPL rhythm/drum mode (0xBD bit 5). Channels 6–8 become fixed drum instruments (BD/SD/TT/CY/HH) and normal melodic voices are reduced." />
+                            <ToggleSwitch Content="Note select (NTS)"
+                                          IsChecked="{Binding OplNoteSelect}"
+                                          ToolTip.Tip="Toggles OPL note select (0x08 bit 6). Changes how key-scaling behaves for some notes; subtle but can affect timbre." />
+                        </StackPanel>
+
+                        <TextBlock Text="Drums (requires Rhythm mode):" />
+                        <WrapPanel ItemSpacing="10" LineSpacing="6" IsEnabled="{Binding OplRhythmMode}">
+                            <CheckBox Content="BD"
+                                      IsChecked="{Binding OplDrumBd}"
+                                      ToolTip.Tip="Bass Drum enable (0xBD bit 4). Only applies when Rhythm mode is on." />
+                            <CheckBox Content="SD"
+                                      IsChecked="{Binding OplDrumSd}"
+                                      ToolTip.Tip="Snare Drum enable (0xBD bit 3). Only applies when Rhythm mode is on." />
+                            <CheckBox Content="TT"
+                                      IsChecked="{Binding OplDrumTt}"
+                                      ToolTip.Tip="Tom-Tom enable (0xBD bit 2). Only applies when Rhythm mode is on." />
+                            <CheckBox Content="CY"
+                                      IsChecked="{Binding OplDrumCy}"
+                                      ToolTip.Tip="Cymbal enable (0xBD bit 1). Only applies when Rhythm mode is on." />
+                            <CheckBox Content="HH"
+                                      IsChecked="{Binding OplDrumHh}"
+                                      ToolTip.Tip="Hi-Hat enable (0xBD bit 0). Only applies when Rhythm mode is on." />
+                        </WrapPanel>
+
+                        <Separator />
+                        <TextBlock Text="Advanced: write register" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBox Width="80"
+                                     Watermark="Reg (hex)"
+                                     Text="{Binding OplRegisterHex}"
+                                     ToolTip.Tip="OPL register address in hex (0x000–0x1FF). Example: BD (rhythm/depth), 08 (NTS), 104 (4-op), 105 (OPL3 mode)." />
+                            <TextBox Width="80"
+                                     Watermark="Val (hex)"
+                                     Text="{Binding OplValueHex}"
+                                     ToolTip.Tip="Value in hex (00–FF) to write to the selected register." />
+                            <Button Content="Write"
+                                    Command="{Binding WriteOplRegisterCommand}"
+                                    ToolTip.Tip="Writes the register immediately on the audio thread. This can break instruments if you overwrite patch-defined operator settings." />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Padding="12" Background="#0E0E0E">
+            <TextBlock Text="{Binding PatchBankText}" Foreground="#BBBBBB" />
+        </Border>
+    </Grid>
+</Window>

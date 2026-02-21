@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NukedOPL3Sharp", "NukedOPL3Sharp\NukedOPL3Sharp.csproj", "{827A564D-2FA0-4CFF-BB6C-C84FBCEA267A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NukedOPL3Sharp.MidiPlayer", "NukedOPL3Sharp.MidiPlayer\NukedOPL3Sharp.MidiPlayer.csproj", "{D3A115B9-5D51-42C0-845E-0DB91DA4F61A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NukedOPL3Sharp.MidiPlayer.Tests", "NukedOPL3Sharp.MidiPlayer.Tests\NukedOPL3Sharp.MidiPlayer.Tests.csproj", "{14F02F16-6B9D-4A5C-81D6-2D2C6C2DD139}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{827A564D-2FA0-4CFF-BB6C-C84FBCEA267A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{827A564D-2FA0-4CFF-BB6C-C84FBCEA267A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{827A564D-2FA0-4CFF-BB6C-C84FBCEA267A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{827A564D-2FA0-4CFF-BB6C-C84FBCEA267A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D3A115B9-5D51-42C0-845E-0DB91DA4F61A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3A115B9-5D51-42C0-845E-0DB91DA4F61A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3A115B9-5D51-42C0-845E-0DB91DA4F61A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3A115B9-5D51-42C0-845E-0DB91DA4F61A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{14F02F16-6B9D-4A5C-81D6-2D2C6C2DD139}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14F02F16-6B9D-4A5C-81D6-2D2C6C2DD139}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14F02F16-6B9D-4A5C-81D6-2D2C6C2DD139}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14F02F16-6B9D-4A5C-81D6-2D2C6C2DD139}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,24 @@
+# Enforce consistent line endings across Windows/WSL.
+# Keep committed text files as LF, regardless of local platform defaults.
+* text=auto eol=lf
+
+# Common binary formats (disable EOL normalization).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.nupkg binary
+*.snupkg binary
+*.mid binary
+*.midi binary
+*.op2 binary
+*.wopl binary
+
+# Windows-only scripts should remain CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf

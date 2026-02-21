@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.12"/>
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12"/>
+        <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.9"/>
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12"/>
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0"/>
+        <PackageReference Include="Silk.NET.OpenAL" Version="2.23.0"/>
+        <PackageReference Include="Silk.NET.OpenAL.Soft.Native" Version="1.23.1"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NukedOPL3Sharp\NukedOPL3Sharp.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest"/>
+        <Content Include="..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest"/>
+        <Content Include="LICENSE.txt" Link="LICENSE-MidiPlayer.txt" CopyToOutputDirectory="PreserveNewest"/>
+        <Content Include="..\LICENSES\BSD-3-Clause-ymfmidi.txt" Link="LICENSES\BSD-3-Clause-ymfmidi.txt" CopyToOutputDirectory="PreserveNewest"/>
+        <Content Include="..\LICENSES\BSD-3-Clause-ymfm.txt" Link="LICENSES\BSD-3-Clause-ymfm.txt" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+
+</Project>
