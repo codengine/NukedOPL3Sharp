@@ -25,26 +25,26 @@ namespace NukedOPL3Sharp;
 //     uint16_t chc, chd;
 //     uint8_t ch_num;
 // };
-internal sealed class Opl3Channel
+public sealed class Opl3Channel
 {
-    internal Opl3Operator[] Slotz { get; } = new Opl3Operator[2];
-    internal Opl3Channel? Pair { get; set; }
-    internal Opl3Chip? Chip { get; set; }
-    internal ShortSignalSource[] Out { get; } = new ShortSignalSource[4];
+    public Opl3Operator[] Slotz { get; } = new Opl3Operator[2];
+    public Opl3Channel? Pair { get; set; }
+    public Opl3Chip? Chip { get; set; }
+    public ShortSignalSource[] Out { get; } = new ShortSignalSource[4];
 #if OPL_ENABLE_STEREOEXT
-    internal int LeftPan;
-    internal int RightPan;
+    public int LeftPan;
+    public int RightPan;
 #endif
-    internal ChannelType ChannelType;
-    internal ushort FNumber;
-    internal byte Block;
-    internal byte Feedback;
-    internal byte Connection;
-    internal byte Algorithm;
-    internal byte KeyScaleValue;
-    internal ushort Cha;
-    internal ushort Chb;
-    internal ushort Chc;
-    internal ushort Chd;
-    internal byte ChannelNumber;
+    public ChannelType ChannelType;
+    public ushort FNumber;
+    public byte Block;
+    public byte Feedback;
+    public byte Connection;
+    public byte Algorithm;
+    public byte KeyScaleValue;
+    public ushort Cha;
+    public ushort Chb;
+    public ushort Chc;
+    public ushort Chd;
+    public byte ChannelNumber;
 }

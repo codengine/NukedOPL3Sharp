@@ -5,47 +5,47 @@ namespace NukedOPL3Sharp;
 
 public sealed partial class Opl3Chip
 {
-    private const int WriteBufferSize = 1024;
-    private const int WriteBufferDelay = 2;
+    public const int WriteBufferSize = 1024;
+    public const int WriteBufferDelay = 2;
     private const int ResampleFractionBits = 10;
 
-    private Opl3Channel[] Channels { get; } = new Opl3Channel[18];
+    public Opl3Channel[] Channels { get; } = new Opl3Channel[18];
     public Opl3Operator[] Slots { get; } = new Opl3Operator[36];
-    internal ushort Timer;
-    internal ulong EgTimer;
-    internal byte EgTimerRem;
-    internal byte EgState;
-    internal byte EgAdd;
-    internal byte EgTimerLow;
-    internal byte NewM;
-    internal byte Nts;
-    internal byte Rhythm;
-    internal byte VibratoPosition;
-    internal byte VibratoShift;
-    internal byte Tremolo;
-    internal byte TremoloPosition;
-    internal byte TremoloShift;
-    internal uint Noise;
-    internal short ZeroMod;
-    private int[] MixBuffer { get; } = new int[4];
-    internal byte RhythmHihatBit2;
-    internal byte RhythmHihatBit3;
-    internal byte RhythmHihatBit7;
-    internal byte RhythmHihatBit8;
-    internal byte RhythmTomBit3;
-    internal byte RhythmTomBit5;
+    public ushort Timer;
+    public ulong EgTimer;
+    public byte EgTimerRem;
+    public byte EgState;
+    public byte EgAdd;
+    public byte EgTimerLow;
+    public byte NewM;
+    public byte Nts;
+    public byte Rhythm;
+    public byte VibratoPosition;
+    public byte VibratoShift;
+    public byte Tremolo;
+    public byte TremoloPosition;
+    public byte TremoloShift;
+    public uint Noise;
+    public short ZeroMod;
+    public int[] MixBuffer { get; } = new int[4];
+    public byte RhythmHihatBit2;
+    public byte RhythmHihatBit3;
+    public byte RhythmHihatBit7;
+    public byte RhythmHihatBit8;
+    public byte RhythmTomBit3;
+    public byte RhythmTomBit5;
 #if OPL_ENABLE_STEREOEXT
-    internal byte StereoExtension;
+    public byte StereoExtension;
 #endif
-    internal int RateRatio;
-    internal int SampleCounter;
-    private short[] OldSamples { get; } = new short[4];
-    private short[] Samples { get; } = new short[4];
-    internal ulong WriteBufferSampleCounter;
-    internal uint WriteBufferCurrent;
-    internal uint WriteBufferLast;
-    internal ulong WriteBufferLastTime;
-    private Opl3WriteBufferEntry[] WriteBuffer { get; } = new Opl3WriteBufferEntry[WriteBufferSize];
+    public int RateRatio;
+    public int SampleCounter;
+    public short[] OldSamples { get; } = new short[4];
+    public short[] Samples { get; } = new short[4];
+    public ulong WriteBufferSampleCounter;
+    public uint WriteBufferCurrent;
+    public uint WriteBufferLast;
+    public ulong WriteBufferLastTime;
+    public Opl3WriteBufferEntry[] WriteBuffer { get; } = new Opl3WriteBufferEntry[WriteBufferSize];
 
     public Opl3Chip()
     {
@@ -135,18 +135,18 @@ public sealed partial class Opl3Chip
         GenerateStreamCore(stream);
     }
 
-    internal ulong GetWriteBufferSampleCounter()
+    public ulong GetWriteBufferSampleCounter()
     {
         return WriteBufferSampleCounter;
     }
 
-    internal ulong? PeekNextBufferedWriteSample()
+    public ulong? PeekNextBufferedWriteSample()
     {
         var entry = WriteBuffer[(int)WriteBufferCurrent];
         return (entry.Register & 0x200) != 0 ? entry.Time : null;
     }
 
-    internal void ProcessWriteBufferUntil(ulong inclusiveSampleIndex)
+    public void ProcessWriteBufferUntil(ulong inclusiveSampleIndex)
     {
         if (WriteBufferSampleCounter > inclusiveSampleIndex)
         {
@@ -179,7 +179,7 @@ public sealed partial class Opl3Chip
     }
 }
 
-internal enum ChannelType : byte
+public enum ChannelType : byte
 {
     TwoOp = 0,
     FourOp = 1,
@@ -201,9 +201,9 @@ public enum EnvelopeGeneratorStage : byte
     Release = 3
 }
 
-internal sealed class Opl3WriteBufferEntry
+public sealed class Opl3WriteBufferEntry
 {
-    internal byte Data;
-    internal ushort Register;
-    internal ulong Time;
+    public byte Data;
+    public ushort Register;
+    public ulong Time;
 }

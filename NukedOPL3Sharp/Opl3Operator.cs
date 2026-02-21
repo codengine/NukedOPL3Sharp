@@ -40,17 +40,17 @@ public sealed class Opl3Operator
     /// <summary>
     ///     Effective envelope rate index for current state (after KSR/KSL computations).
     /// </summary>
-    internal byte EffectiveEnvelopeRateIndex;
+    public byte EffectiveEnvelopeRateIndex;
 
     /// <summary>
     ///     Effective Key-Scale Level value combined with note/f-number (attenuation offset applied to TL).
     /// </summary>
-    internal byte EffectiveKeyScaleLevel;
+    public byte EffectiveKeyScaleLevel;
 
     /// <summary>
     ///     Envelope generator increment per sample tick (rate step accumulator).
     /// </summary>
-    internal byte EnvelopeGeneratorIncrement;
+    public byte EnvelopeGeneratorIncrement;
 
     /// <summary>
     ///     Envelope generator current output level (attenuation value used to scale operator output).
@@ -71,28 +71,28 @@ public sealed class Opl3Operator
     /// <summary>
     ///     Feedback-modified signal fed back into the operator (used when operator is carrier with feedback).
     /// </summary>
-    internal short FeedbackModifiedSignal;
+    public short FeedbackModifiedSignal;
 
     /// <summary>
     ///     External modulation source providing the modulator signal for this operator (usually previous operator in
     ///     algorithm).
     /// </summary>
-    internal ShortSignalSource ModulationSource = ShortSignalSource.Zero;
+    public ShortSignalSource ModulationSource = ShortSignalSource.Zero;
 
     /// <summary>
     ///     Current operator audio output sample (linear, post-EG, post-waveform).
     /// </summary>
-    internal short Out;
+    public short Out;
 
     /// <summary>
     ///     Phase generator output phase used to index waveform (reduced bits of PgPhase).
     /// </summary>
-    internal ushort PhaseGeneratorOutput;
+    public ushort PhaseGeneratorOutput;
 
     /// <summary>
     ///     Previous output sample (used for feedback calculation).
     /// </summary>
-    internal short PreviousOutputSample;
+    public short PreviousOutputSample;
 
     /// <summary>
     ///     Register: AR (Attack Rate).
@@ -128,24 +128,24 @@ public sealed class Opl3Operator
     ///     Internal key state for this operator.
     ///     0 = Key off, non-zero = Key on (key-on latched for EG/PG logic).
     /// </summary>
-    internal byte RegKeyState;
+    public byte RegKeyState;
 
     /// <summary>
     ///     Register: Operator type (modulator/carrier selection by algorithm; also AM enable on some variants).
     ///     Typically: 0 = Modulator, 1 = Carrier for the channel algorithm step.
     /// </summary>
-    internal byte RegOperatorType;
+    public byte RegOperatorType;
 
     /// <summary>
     ///     Phase generator accumulator (phase counter in fixed-point domain).
     /// </summary>
-    internal uint RegPhaseGeneratorAccumulator;
+    public uint RegPhaseGeneratorAccumulator;
 
     /// <summary>
     ///     Phase generator reset request/flag (set when key-on or algorithm requires resetting phase).
     ///     Any non-zero value indicates a reset event.
     /// </summary>
-    internal uint RegPhaseResetRequest;
+    public uint RegPhaseResetRequest;
 
     /// <summary>
     ///     Register: RR (Release Rate).
@@ -169,33 +169,33 @@ public sealed class Opl3Operator
     ///     Register: VIB (vibrato enable).
     ///     0 = Vibrato off, 1 = Vibrato on (depth controlled globally).
     /// </summary>
-    internal byte RegVibrato;
+    public byte RegVibrato;
 
     /// <summary>
     ///     Register: WF (Waveform select).
     ///     0..7 = Waveform index (availability depends on OPL mode; common: 0 = sine, others = variants/rectified).
     /// </summary>
-    internal byte RegWaveformSelect;
+    public byte RegWaveformSelect;
 
     /// <summary>
     ///     Slot index within the chip (0-based operator number).
     /// </summary>
-    internal byte SlotIndex;
+    public byte SlotIndex;
 
     /// <summary>
     ///     Back-reference to the owning channel this operator belongs to.
     /// </summary>
-    internal Opl3Channel? Channel { get; set; }
+    public Opl3Channel? Channel { get; set; }
 
     /// <summary>
     ///     Back-reference to the parent chip instance.
     /// </summary>
-    internal Opl3Chip? Chip { get; set; }
+    public Opl3Chip? Chip { get; set; }
 
     /// <summary>
     ///     Indicates whether the tremolo LFO is applied to this operator.
     /// </summary>
-    internal bool TremoloEnabled { get; set; }
+    public bool TremoloEnabled { get; set; }
 
     /// <summary>
     ///     Value source exposing current operator output sample.

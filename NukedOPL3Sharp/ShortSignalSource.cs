@@ -9,7 +9,7 @@ namespace NukedOPL3Sharp;
 ///     Lightweight indirection used to read either zero, operator output, or operator feedback without allocating
 ///     delegates.
 /// </summary>
-internal readonly struct ShortSignalSource
+public readonly struct ShortSignalSource
 {
     private enum SourceKind : byte
     {
@@ -30,7 +30,7 @@ internal readonly struct ShortSignalSource
     public static ShortSignalSource Zero => default;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal short Read()
+    public short Read()
     {
         return _kind switch
         {
@@ -41,7 +41,7 @@ internal readonly struct ShortSignalSource
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ShortSignalSource FromOutput(Opl3Operator source)
+    public static ShortSignalSource FromOutput(Opl3Operator source)
     {
         return source is null
             ? throw new ArgumentNullException(nameof(source))
@@ -49,7 +49,7 @@ internal readonly struct ShortSignalSource
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ShortSignalSource FromFeedback(Opl3Operator source)
+    public static ShortSignalSource FromFeedback(Opl3Operator source)
     {
         return source is null
             ? throw new ArgumentNullException(nameof(source))
