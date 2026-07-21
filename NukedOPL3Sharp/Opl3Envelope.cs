@@ -79,52 +79,53 @@ internal static class Opl3Envelope
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static short EnvelopeCalcSin2(ushort phase, ushort envelope)
     {
-        const ushort neg = 0xffff;
         phase &= 0x3ff;
         var output = (phase & 0x100) != 0
             ? Opl3Tables.ReadLogSin((phase & 0xff) ^ 0xff)
             : Opl3Tables.ReadLogSin(phase & 0xff);
 
-        var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
-        return unchecked((short)(sample ^ neg));
+        return EnvelopeCalcExp((uint)(output + (envelope << 3)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static short EnvelopeCalcSin3(ushort phase, ushort envelope)
     {
         ushort output;
-        const ushort neg = 0xffff;
         phase &= 0x3ff;
-        if ((phase & 0x200) != 0)
+        if ((phase & 0x100) != 0)
         {
             output = 0x1000;
-        }
-        else if ((phase & 0x100) != 0)
-        {
-            output = Opl3Tables.ReadLogSin((phase & 0xff) ^ 0xff);
         }
         else
         {
             output = Opl3Tables.ReadLogSin(phase & 0xff);
         }
 
-        var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
-        return unchecked((short)(sample ^ neg));
+        return EnvelopeCalcExp((uint)(output + (envelope << 3)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static short EnvelopeCalcSin4(ushort phase, ushort envelope)
     {
         ushort output;
-        const ushort neg = 0xffff;
+        ushort neg = 0;
         phase &= 0x3ff;
-        if ((phase & 0x100) != 0)
+        if ((phase & 0x300) == 0x100)
         {
-            output = (ushort)(((phase & 0xff) ^ 0xff) << 4);
+            neg = 0xffff;
+        }
+
+        if ((phase & 0x200) != 0)
+        {
+            output = 0x1000;
+        }
+        else if ((phase & 0x80) != 0)
+        {
+            output = Opl3Tables.ReadLogSin(((phase ^ 0xff) << 1) & 0xff);
         }
         else
         {
-            output = (ushort)((phase & 0xff) << 4);
+            output = Opl3Tables.ReadLogSin((phase << 1) & 0xff);
         }
 
         var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
@@ -138,16 +139,15 @@ internal static class Opl3Envelope
         phase &= 0x3ff;
         if ((phase & 0x200) != 0)
         {
-            phase ^= 0x3ff;
+            output = 0x1000;
         }
-
-        if ((phase & 0x100) != 0)
+        else if ((phase & 0x80) != 0)
         {
-            output = (ushort)(((phase & 0xff) ^ 0xff) << 4);
+            output = Opl3Tables.ReadLogSin(((phase ^ 0xff) << 1) & 0xff);
         }
         else
         {
-            output = (ushort)((phase & 0xff) << 4);
+            output = Opl3Tables.ReadLogSin((phase << 1) & 0xff);
         }
 
         return EnvelopeCalcExp((uint)(output + (envelope << 3)));
@@ -156,49 +156,31 @@ internal static class Opl3Envelope
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static short EnvelopeCalcSin6(ushort phase, ushort envelope)
     {
-        ushort output;
-        const ushort neg = 0xffff;
+        ushort neg = 0;
         phase &= 0x3ff;
         if ((phase & 0x200) != 0)
         {
-            output = 0x1000;
-        }
-        else if ((phase & 0x100) != 0)
-        {
-            output = Opl3Tables.ReadLogSin((phase & 0xff) ^ 0xff);
-        }
-        else
-        {
-            output = Opl3Tables.ReadLogSin(phase & 0xff);
+            neg = 0xffff;
         }
 
-        phase = (ushort)((phase + 0x80) & 0x3ff);
-        output += Opl3Tables.ReadLogSin(phase & 0xff);
-        var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
+        var sample = (ushort)EnvelopeCalcExp((uint)(envelope << 3));
         return unchecked((short)(sample ^ neg));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static short EnvelopeCalcSin7(ushort phase, ushort envelope)
     {
-        ushort output;
+        ushort neg = 0;
         phase &= 0x3ff;
         if ((phase & 0x200) != 0)
         {
-            output = 0x1000;
-        }
-        else if ((phase & 0x100) != 0)
-        {
-            output = Opl3Tables.ReadLogSin((phase & 0xff) ^ 0xff);
-        }
-        else
-        {
-            output = Opl3Tables.ReadLogSin(phase & 0xff);
+            neg = 0xffff;
+            phase = (ushort)((phase & 0x1ff) ^ 0x1ff);
         }
 
-        phase = (ushort)((phase + 0x80) & 0x3ff);
-        output += Opl3Tables.ReadLogSin(phase & 0xff);
-        return EnvelopeCalcExp((uint)(output + (envelope << 3)));
+        var output = (ushort)(phase << 3);
+        var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
+        return unchecked((short)(sample ^ neg));
     }
 
     internal static void EnvelopeUpdateKsl(Opl3Operator slot)

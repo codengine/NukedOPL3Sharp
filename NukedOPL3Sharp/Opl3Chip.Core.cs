@@ -372,11 +372,9 @@ public sealed partial class Opl3Chip
             {
                 var channel = chip.Channels[ch];
                 channel.ChannelType = ChannelType.TwoOp;
-                channel.Out[0] = ShortSignalSource.Zero;
-                channel.Out[1] = ShortSignalSource.Zero;
-                channel.Out[2] = ShortSignalSource.Zero;
-                channel.Out[3] = ShortSignalSource.Zero;
                 ChannelSetupAlgorithm(channel);
+                Opl3Envelope.EnvelopeKeyOff(channel.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.EnvelopeKeyOff(channel.Slotz[1], EnvelopeKeyType.Drum);
             }
         }
     }
@@ -384,27 +382,45 @@ public sealed partial class Opl3Chip
     /* Original C: static void OPL3_ChannelWriteA0(opl3_channel *channel, uint8_t data) */
     private static void ChannelWriteA0(Opl3Channel channel, byte data)
     {
+        var chip = channel.Chip ?? throw new InvalidOperationException("Channel chip not assigned.");
+        if (chip.NewM != 0 && channel.ChannelType == ChannelType.FourOpPair)
+        {
+            return;
+        }
+
         channel.FNumber = (ushort)((channel.FNumber & 0x300) | data);
-        if (channel.Chip?.NewM == 0 || channel.ChannelType != ChannelType.FourOp)
+        channel.KeyScaleValue = (byte)((channel.Block << 1) | ((channel.FNumber >> (0x09 - chip.Nts)) & 0x01));
+        Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[0]);
+        Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[1]);
+
+        if (chip.NewM == 0 || channel.ChannelType != ChannelType.FourOp)
         {
             return;
         }
 
         var pair = channel.Pair ?? throw new InvalidOperationException("Missing 4-op pair.");
         pair.FNumber = channel.FNumber;
+        pair.KeyScaleValue = channel.KeyScaleValue;
+        Opl3Envelope.EnvelopeUpdateKsl(pair.Slotz[0]);
+        Opl3Envelope.EnvelopeUpdateKsl(pair.Slotz[1]);
     }
 
     /* Original C: static void OPL3_ChannelWriteB0(opl3_channel *channel, uint8_t data) */
     private static void ChannelWriteB0(Opl3Channel channel, byte data)
     {
+        var chip = channel.Chip ?? throw new InvalidOperationException("Channel chip not assigned.");
+        if (chip.NewM != 0 && channel.ChannelType == ChannelType.FourOpPair)
+        {
+            return;
+        }
+
         channel.FNumber = (ushort)((channel.FNumber & 0xff) | ((data & 0x03) << 8));
         channel.Block = (byte)((data >> 2) & 0x07);
-        channel.KeyScaleValue = (byte)((channel.Block << 1)
-                                       | ((channel.FNumber >> (0x09 - (channel.Chip?.Nts ?? 0))) & 0x01));
+        channel.KeyScaleValue = (byte)((channel.Block << 1) | ((channel.FNumber >> (0x09 - chip.Nts)) & 0x01));
         Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[0]);
         Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[1]);
 
-        if (channel.Chip?.NewM == 0 || channel.ChannelType != ChannelType.FourOp)
+        if (chip.NewM == 0 || channel.ChannelType != ChannelType.FourOp)
         {
             return;
         }
@@ -477,8 +493,8 @@ public sealed partial class Opl3Chip
         }
 #if OPL_ENABLE_STEREOEXT
         if (channel.Chip is { StereoExtension: 0 }) {
-            channel.LeftPan = channel.Cha != 0 ? 0x10000 : 0;
-            channel.RightPan = channel.Chb != 0 ? 0x10000 : 0;
+            channel.LeftPan = channel.Cha << 16;
+            channel.RightPan = channel.Chb << 16;
         }
 #endif
     }
@@ -605,10 +621,10 @@ public sealed partial class Opl3Chip
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ProcessSlot(Opl3Operator slot)
     {
+        SlotCalcFeedback(slot);
         Opl3Envelope.EnvelopeCalc(slot);
         PhaseGenerate(slot);
         SlotGenerate(slot);
-        SlotCalcFeedback(slot);
     }
 
 

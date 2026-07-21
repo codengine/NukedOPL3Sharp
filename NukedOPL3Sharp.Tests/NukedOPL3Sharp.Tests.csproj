@@ -7,12 +7,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <PackageReference Include="xunit.v3" Version="3.2.2"/>
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NukedOPL3Sharp.MidiPlayer\NukedOPL3Sharp.MidiPlayer.csproj"/>
+        <ProjectReference Include="..\NukedOPL3Sharp\NukedOPL3Sharp.csproj"/>
     </ItemGroup>
 </Project>
