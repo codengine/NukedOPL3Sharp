@@ -19,9 +19,9 @@
         <RepositoryType>git</RepositoryType>
         <PackageTags>opl3;fm;synth;emulator</PackageTags>
         <Company>codengine</Company>
-        <AssemblyVersion>1.2.1</AssemblyVersion>
-        <FileVersion>1.2.1</FileVersion>
-        <Version>1.2.1</Version>
+        <AssemblyVersion>1.3.0</AssemblyVersion>
+        <FileVersion>1.3.0</FileVersion>
+        <Version>1.3.0</Version>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
