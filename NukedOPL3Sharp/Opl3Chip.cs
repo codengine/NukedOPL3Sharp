@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 
+using System.Runtime.CompilerServices;
+
 namespace NukedOPL3Sharp;
 
 /// <summary>
@@ -160,8 +162,13 @@ public sealed partial class Opl3Chip
     public ulong WriteBufferLastTime;
     public Opl3WriteBufferEntry[] WriteBuffer { get; } = new Opl3WriteBufferEntry[WriteBufferSize];
 
+    /// <summary>
+    ///     Creates a chip with every target-specific lookup table initialized before the instance can render.
+    /// </summary>
     public Opl3Chip()
     {
+        RuntimeHelpers.RunClassConstructor(typeof(Opl3Tables).TypeHandle);
+
         for (var i = 0; i < Channels.Length; i++)
         {
             Channels[i] = new Opl3Channel
