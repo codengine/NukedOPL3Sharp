@@ -1,189 +1,20 @@
 // SPDX-FileCopyrightText: 2013-2026 Nuked-OPL3 by nukeykt
+// SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 
 using System.Runtime.CompilerServices;
 
 namespace NukedOPL3Sharp;
 
-/*
-    Envelope generator
-*/
+/// <summary>
+///     Advances operator envelopes and converts their logarithmic waveform level into a sample.
+/// </summary>
 internal static class Opl3Envelope
 {
-    /*
-        envelope_sinfunc envelope_sin[8]
-    */
-    private static readonly EnvelopeSinFunc[] EnvelopeSin =
-    [
-        EnvelopeCalcSin0,
-        EnvelopeCalcSin1,
-        EnvelopeCalcSin2,
-        EnvelopeCalcSin3,
-        EnvelopeCalcSin4,
-        EnvelopeCalcSin5,
-        EnvelopeCalcSin6,
-        EnvelopeCalcSin7
-    ];
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcExp(uint level)
-    {
-        if (level > 0x1fff)
-        {
-            level = 0x1fff;
-        }
-
-        var value = (Opl3Tables.ReadExp((int)(level & 0xff)) << 1) >> (int)(level >> 8);
-        return (short)value;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin0(ushort phase, ushort envelope)
-    {
-        ushort neg = 0;
-        phase &= 0x3ff;
-        if ((phase & 0x200) != 0)
-        {
-            neg = 0xffff;
-        }
-
-        var output = (phase & 0x100) != 0
-            ? Opl3Tables.ReadLogSin((phase & 0xff) ^ 0xff)
-            : Opl3Tables.ReadLogSin(phase & 0xff);
-
-        var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
-        return unchecked((short)(sample ^ neg));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin1(ushort phase, ushort envelope)
-    {
-        ushort output;
-        phase &= 0x3ff;
-        if ((phase & 0x200) != 0)
-        {
-            output = 0x1000;
-        }
-        else if ((phase & 0x100) != 0)
-        {
-            output = Opl3Tables.ReadLogSin((phase & 0xff) ^ 0xff);
-        }
-        else
-        {
-            output = Opl3Tables.ReadLogSin(phase & 0xff);
-        }
-
-        return EnvelopeCalcExp((uint)(output + (envelope << 3)));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin2(ushort phase, ushort envelope)
-    {
-        phase &= 0x3ff;
-        var output = (phase & 0x100) != 0
-            ? Opl3Tables.ReadLogSin((phase & 0xff) ^ 0xff)
-            : Opl3Tables.ReadLogSin(phase & 0xff);
-
-        return EnvelopeCalcExp((uint)(output + (envelope << 3)));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin3(ushort phase, ushort envelope)
-    {
-        ushort output;
-        phase &= 0x3ff;
-        if ((phase & 0x100) != 0)
-        {
-            output = 0x1000;
-        }
-        else
-        {
-            output = Opl3Tables.ReadLogSin(phase & 0xff);
-        }
-
-        return EnvelopeCalcExp((uint)(output + (envelope << 3)));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin4(ushort phase, ushort envelope)
-    {
-        ushort output;
-        ushort neg = 0;
-        phase &= 0x3ff;
-        if ((phase & 0x300) == 0x100)
-        {
-            neg = 0xffff;
-        }
-
-        if ((phase & 0x200) != 0)
-        {
-            output = 0x1000;
-        }
-        else if ((phase & 0x80) != 0)
-        {
-            output = Opl3Tables.ReadLogSin(((phase ^ 0xff) << 1) & 0xff);
-        }
-        else
-        {
-            output = Opl3Tables.ReadLogSin((phase << 1) & 0xff);
-        }
-
-        var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
-        return unchecked((short)(sample ^ neg));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin5(ushort phase, ushort envelope)
-    {
-        ushort output;
-        phase &= 0x3ff;
-        if ((phase & 0x200) != 0)
-        {
-            output = 0x1000;
-        }
-        else if ((phase & 0x80) != 0)
-        {
-            output = Opl3Tables.ReadLogSin(((phase ^ 0xff) << 1) & 0xff);
-        }
-        else
-        {
-            output = Opl3Tables.ReadLogSin((phase << 1) & 0xff);
-        }
-
-        return EnvelopeCalcExp((uint)(output + (envelope << 3)));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin6(ushort phase, ushort envelope)
-    {
-        ushort neg = 0;
-        phase &= 0x3ff;
-        if ((phase & 0x200) != 0)
-        {
-            neg = 0xffff;
-        }
-
-        var sample = (ushort)EnvelopeCalcExp((uint)(envelope << 3));
-        return unchecked((short)(sample ^ neg));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static short EnvelopeCalcSin7(ushort phase, ushort envelope)
-    {
-        ushort neg = 0;
-        phase &= 0x3ff;
-        if ((phase & 0x200) != 0)
-        {
-            neg = 0xffff;
-            phase = (ushort)((phase & 0x1ff) ^ 0x1ff);
-        }
-
-        var output = (ushort)(phase << 3);
-        var sample = (ushort)EnvelopeCalcExp((uint)(output + (envelope << 3)));
-        return unchecked((short)(sample ^ neg));
-    }
-
-    internal static void EnvelopeUpdateKsl(Opl3Operator slot)
+    /// <summary>
+    ///     Refreshes key-scale level and the combined attenuation used for every generated sample.
+    /// </summary>
+    internal static void UpdateKeyScaleLevel(Opl3Operator slot)
     {
         var channel = slot.Channel ?? throw new InvalidOperationException("Channel not assigned.");
         var value = (short)((Opl3Tables.ReadKeyScaleLevel(channel.FNumber >> 6) << 2)
@@ -194,83 +25,69 @@ internal static class Opl3Envelope
         }
 
         slot.EffectiveKeyScaleLevel = (byte)value;
+        slot.CachedEnvelopeAttenuation = (ushort)((slot.RegTotalLevel << 2)
+                                                   + (slot.EffectiveKeyScaleLevel >>
+                                                      Opl3Tables.ReadKeyScaleShift(slot.RegKeyScaleLevel)));
     }
 
-    internal static void EnvelopeCalc(Opl3Operator slot)
+    /// <summary>
+    ///     Resolves all stage rates after a register or channel pitch change so sample generation only selects a cache entry.
+    /// </summary>
+    internal static void UpdateRates(Opl3Operator slot)
+    {
+        var channel = slot.Channel ?? throw new InvalidOperationException("Channel not assigned.");
+        slot.CachedEnvelopeKeyScale = (byte)(channel.KeyScaleValue >> ((slot.RegKeyScaleRate ^ 1) << 1));
+
+        for (var stage = 0; stage < slot.EnvelopeRates.Length; stage++)
+        {
+            var rate = (byte)(slot.CachedEnvelopeKeyScale + (slot.EnvelopeRates[stage] << 2));
+            var rateHigh = (byte)(rate >> 2);
+            if ((rateHigh & 0x10) != 0)
+            {
+                rateHigh = 0x0f;
+            }
+
+            slot.EnvelopeRateHigh[stage] = rateHigh;
+            slot.EnvelopeRateLow[stage] = (byte)(rate & 0x03);
+        }
+    }
+
+    /// <summary>
+    ///     Advances one operator's envelope while preserving the upstream timer and key-transition rules.
+    /// </summary>
+    internal static void Calculate(Opl3Operator slot)
     {
         var chip = slot.Chip ?? throw new InvalidOperationException("Chip not assigned.");
-        var channel = slot.Channel ?? throw new InvalidOperationException("Channel not assigned.");
-
-        byte regRate = 0;
+        var stage = slot.EnvelopeGeneratorState;
+        var reset = slot.RegKeyState != 0 && stage == (byte)EnvelopeGeneratorStage.Release;
+        var rateStage = reset ? (byte)EnvelopeGeneratorStage.Attack : stage;
+        var registerRate = slot.EnvelopeRates[rateStage];
+        var rateHigh = slot.EnvelopeRateHigh[rateStage];
+        var rateLow = slot.EnvelopeRateLow[rateStage];
         byte shift = 0;
-        var egIncrement = 0;
-        byte reset = 0;
 
-        var tremoloValue = slot.TremoloEnabled ? chip.Tremolo : (byte)0;
-        slot.EnvelopeGeneratorLevel = (ushort)(slot.EnvelopeGeneratorOutput + (slot.RegTotalLevel << 2)
-                                                                            + (slot.EffectiveKeyScaleLevel >>
-                                                                               Opl3Tables.ReadKeyScaleShift(
-                                                                                   slot.RegKeyScaleLevel)) +
-                                                                            tremoloValue);
+        slot.EnvelopeGeneratorLevel = (ushort)(slot.EnvelopeGeneratorOutput + slot.CachedEnvelopeAttenuation
+                                                + (slot.TremoloEnabled ? chip.Tremolo : 0));
+        slot.RegPhaseResetRequest = reset ? 1u : 0u;
 
-        if (slot.RegKeyState != 0 && slot.EnvelopeGeneratorState == (byte)EnvelopeGeneratorStage.Release)
+        if (registerRate != 0)
         {
-            reset = 1;
-            regRate = slot.RegAttackRate;
-        }
-        else
-        {
-            switch ((EnvelopeGeneratorStage)slot.EnvelopeGeneratorState)
-            {
-                case EnvelopeGeneratorStage.Attack:
-                    regRate = slot.RegAttackRate;
-                    break;
-                case EnvelopeGeneratorStage.Decay:
-                    regRate = slot.RegDecayRate;
-                    break;
-                case EnvelopeGeneratorStage.Sustain:
-                    if (slot.RegOperatorType == 0)
-                    {
-                        regRate = slot.RegReleaseRate;
-                    }
-
-                    break;
-                case EnvelopeGeneratorStage.Release:
-                    regRate = slot.RegReleaseRate;
-                    break;
-            }
-        }
-
-        slot.RegPhaseResetRequest = reset;
-        var keyScale = (byte)(channel.KeyScaleValue >> ((slot.RegKeyScaleRate ^ 1) << 1));
-        var nonZero = (byte)(regRate != 0 ? 1 : 0);
-        var rate = (byte)(keyScale + (regRate << 2));
-        var rateHi = (byte)(rate >> 2);
-        var rateLo = (byte)(rate & 0x03);
-        if ((rateHi & 0x10) != 0)
-        {
-            rateHi = 0x0f;
-        }
-
-        var egShift = (byte)(rateHi + chip.EgAdd);
-        if (nonZero != 0)
-        {
-            if (rateHi < 12)
+            if (rateHigh < 12)
             {
                 if (chip.EgState != 0)
                 {
-                    shift = egShift switch
+                    shift = (byte)(rateHigh + chip.EgAdd) switch
                     {
                         12 => 1,
-                        13 => (byte)((rateLo >> 1) & 0x01),
-                        14 => (byte)(rateLo & 0x01),
-                        _ => shift
+                        13 => (byte)((rateLow >> 1) & 0x01),
+                        14 => (byte)(rateLow & 0x01),
+                        _ => 0
                     };
                 }
             }
             else
             {
-                shift = (byte)((rateHi & 0x03) + Opl3Tables.EgIncrementSteps[rateLo, chip.EgTimerLow]);
+                shift = (byte)((rateHigh & 0x03) + Opl3Tables.EgIncrementSteps[rateLow, chip.EgTimerLow]);
                 if ((shift & 0x04) != 0)
                 {
                     shift = 0x03;
@@ -283,34 +100,30 @@ internal static class Opl3Envelope
             }
         }
 
-        var egRout = slot.EnvelopeGeneratorOutput;
-        byte egOff = 0;
+        var envelopeOutput = slot.EnvelopeGeneratorOutput;
+        var envelopeIncrement = 0;
+        var envelopeOff = (slot.EnvelopeGeneratorOutput & 0x1f8) == 0x1f8;
 
-        if (reset != 0 && rateHi == 0x0f)
+        if (reset && rateHigh == 0x0f)
         {
-            egRout = 0x00;
+            envelopeOutput = 0;
         }
 
-        if ((slot.EnvelopeGeneratorOutput & 0x1f8) == 0x1f8)
+        if (stage != (byte)EnvelopeGeneratorStage.Attack && !reset && envelopeOff)
         {
-            egOff = 1;
+            envelopeOutput = 0x1ff;
         }
 
-        if (slot.EnvelopeGeneratorState != (byte)EnvelopeGeneratorStage.Attack && reset == 0 && egOff != 0)
-        {
-            egRout = 0x1ff;
-        }
-
-        switch ((EnvelopeGeneratorStage)slot.EnvelopeGeneratorState)
+        switch ((EnvelopeGeneratorStage)stage)
         {
             case EnvelopeGeneratorStage.Attack:
                 if (slot.EnvelopeGeneratorOutput == 0)
                 {
                     slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Decay;
                 }
-                else if (slot.RegKeyState != 0 && shift > 0 && rateHi != 0x0f)
+                else if (slot.RegKeyState != 0 && shift > 0 && rateHigh != 0x0f)
                 {
-                    egIncrement = ~slot.EnvelopeGeneratorOutput >> (4 - shift);
+                    envelopeIncrement = ~slot.EnvelopeGeneratorOutput >> (4 - shift);
                 }
 
                 break;
@@ -320,26 +133,25 @@ internal static class Opl3Envelope
                 {
                     slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Sustain;
                 }
-                else if (egOff == 0 && reset == 0 && shift > 0)
+                else if (!envelopeOff && !reset && shift > 0)
                 {
-                    egIncrement = 1 << (shift - 1);
+                    envelopeIncrement = 1 << (shift - 1);
                 }
 
                 break;
 
             case EnvelopeGeneratorStage.Sustain:
             case EnvelopeGeneratorStage.Release:
-                if (egOff == 0 && reset == 0 && shift > 0)
+                if (!envelopeOff && !reset && shift > 0)
                 {
-                    egIncrement = 1 << (shift - 1);
+                    envelopeIncrement = 1 << (shift - 1);
                 }
 
                 break;
         }
 
-        slot.EnvelopeGeneratorOutput = (ushort)((egRout + egIncrement) & 0x1ff);
-
-        if (reset != 0)
+        slot.EnvelopeGeneratorOutput = (ushort)((envelopeOutput + envelopeIncrement) & 0x1ff);
+        if (reset)
         {
             slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Attack;
         }
@@ -350,24 +162,49 @@ internal static class Opl3Envelope
         }
     }
 
-    internal static void EnvelopeKeyOn(Opl3Operator slot, EnvelopeKeyType type)
+    /// <summary>
+    ///     Adds a key source without disturbing any other active key source.
+    /// </summary>
+    internal static void KeyOn(Opl3Operator slot, EnvelopeKeyType type)
     {
         slot.RegKeyState = (byte)(slot.RegKeyState | (byte)type);
     }
 
-    internal static void EnvelopeKeyOff(Opl3Operator slot, EnvelopeKeyType type)
+    /// <summary>
+    ///     Removes one key source while preserving any other active key source.
+    /// </summary>
+    internal static void KeyOff(Opl3Operator slot, EnvelopeKeyType type)
     {
         slot.RegKeyState = (byte)(slot.RegKeyState & ~(byte)type);
     }
 
+    /// <summary>
+    ///     Generates a sample through the precomputed waveform and pre-shifted exponential tables.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static short GenerateWaveform(Opl3Operator slot)
     {
-        var index = slot.RegWaveformSelect & 0x07;
-        var mod = slot.ModulationSource.Read();
-        var phase = (ushort)unchecked(slot.PhaseGeneratorOutput + (ushort)mod);
-        return EnvelopeSin[index](phase, slot.EnvelopeGeneratorLevel);
+        var phase = unchecked((ushort)(slot.PhaseGeneratorOutput + (ushort)slot.ModulationSource.Read()));
+        var waveform = Opl3Tables.ReadWaveform(slot.RegWaveformSelect, phase & 0x3ff);
+        var negativeMask = (ushort)((short)waveform >> 15);
+        var level = (uint)((waveform & 0x7fff) + (slot.EnvelopeGeneratorLevel << 3));
+        if (level > 0x1fff)
+        {
+            level = 0x1fff;
+        }
+
+        var sample = (ushort)(Opl3Tables.ReadExp((int)(level & 0xff)) >> (int)(level >> 8));
+        return unchecked((short)(sample ^ negativeMask));
     }
 
-    private delegate short EnvelopeSinFunc(ushort phase, ushort envelope);
+    /// <summary>
+    ///     Generates only the waveform sign after attenuation has proven the exponential magnitude is zero.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static short GenerateSilentWaveform(Opl3Operator slot)
+    {
+        var phase = unchecked((ushort)(slot.PhaseGeneratorOutput + (ushort)slot.ModulationSource.Read()));
+        var waveform = Opl3Tables.ReadWaveform(slot.RegWaveformSelect, phase & 0x3ff);
+        return (short)((short)waveform >> 15);
+    }
 }

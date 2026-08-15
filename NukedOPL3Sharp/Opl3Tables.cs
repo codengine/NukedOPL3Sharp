@@ -30,10 +30,15 @@
  * version: 1.8
  */
 
+// SPDX-FileCopyrightText: 2026 Tony Gies
+// SPDX-License-Identifier: LGPL-2.1-only
 using System.Runtime.CompilerServices;
 
 namespace NukedOPL3Sharp;
 
+/// <summary>
+///     Owns immutable ROM data and decoded lookup tables used by the chip core.
+/// </summary>
 internal static class Opl3Tables
 {
     private static readonly ushort[] LogSinRomData =
@@ -72,8 +77,13 @@ internal static class Opl3Tables
         0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000
     ];
 
-    private static readonly ushort[] ExpRomData =
-    [
+    private static readonly ushort[] WaveformData = BuildWaveformData();
+    private static readonly ushort[] ExpRomData = BuildExpRomData();
+
+    private static ushort[] BuildExpRomData()
+    {
+        ushort[] data =
+        [
         0x7fa, 0x7f5, 0x7ef, 0x7ea, 0x7e4, 0x7df, 0x7da, 0x7d4,
         0x7cf, 0x7c9, 0x7c4, 0x7bf, 0x7b9, 0x7b4, 0x7ae, 0x7a9,
         0x7a4, 0x79f, 0x799, 0x794, 0x78f, 0x78a, 0x784, 0x77f,
@@ -105,8 +115,44 @@ internal static class Opl3Tables
         0x45a, 0x457, 0x454, 0x451, 0x44e, 0x44b, 0x448, 0x445,
         0x442, 0x43f, 0x43c, 0x439, 0x436, 0x433, 0x430, 0x42d,
         0x42a, 0x428, 0x425, 0x422, 0x41f, 0x41c, 0x419, 0x416,
-        0x414, 0x411, 0x40e, 0x40b, 0x408, 0x406, 0x403, 0x400
-    ];
+            0x414, 0x411, 0x40e, 0x40b, 0x408, 0x406, 0x403, 0x400
+        ];
+
+        for (var index = 0; index < data.Length; index++)
+        {
+            data[index] <<= 1;
+        }
+
+        return data;
+    }
+
+    private static ushort[] BuildWaveformData()
+    {
+        var data = new ushort[8 * 1_024];
+        for (var phase = 0; phase < 1_024; phase++)
+        {
+            var quarterWave = (phase & 0x100) != 0
+                ? LogSinRomData[(phase & 0xff) ^ 0xff]
+                : LogSinRomData[phase & 0xff];
+            var sign = (ushort)((phase & 0x200) != 0 ? 0x8000 : 0);
+            var doubledWave = sign != 0
+                ? (ushort)0x1000
+                : (phase & 0x80) != 0
+                    ? LogSinRomData[((phase ^ 0xff) << 1) & 0xff]
+                    : LogSinRomData[(phase << 1) & 0xff];
+
+            data[phase] = (ushort)(sign | quarterWave);
+            data[1_024 + phase] = sign != 0 ? (ushort)0x1000 : quarterWave;
+            data[2 * 1_024 + phase] = quarterWave;
+            data[3 * 1_024 + phase] = (phase & 0x100) != 0 ? (ushort)0x1000 : LogSinRomData[phase & 0xff];
+            data[4 * 1_024 + phase] = (ushort)(((phase & 0x300) == 0x100 ? 0x8000 : 0) | doubledWave);
+            data[5 * 1_024 + phase] = doubledWave;
+            data[6 * 1_024 + phase] = sign;
+            data[7 * 1_024 + phase] = (ushort)(sign | ((sign != 0 ? ((phase & 0x1ff) ^ 0x1ff) : phase) << 3));
+        }
+
+        return data;
+    }
 
     private static readonly byte[] FrequencyMultiplierData =
     [
@@ -164,10 +210,13 @@ internal static class Opl3Tables
         { 1, 1, 1, 0 }
     };
 
+    /// <summary>
+    ///     Reads one logarithmic waveform entry for a ten-bit phase.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ushort ReadLogSin(int index)
+    internal static ushort ReadWaveform(int waveform, int phase)
     {
-        return LogSinRomData[index];
+        return WaveformData[(waveform << 10) + phase];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

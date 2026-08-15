@@ -25,6 +25,14 @@ included in this repository in their respective directories.
 - Upstream: https://github.com/nukeykt/Nuked-OPL3
 - License text: `LICENSE` (LGPL v2.1)
 
+## Nuked-OPL3-fast
+
+- Project: Nuked-OPL3-fast by **Tony Gies**
+- Used in: Performance optimizations adapted into `NukedOPL3Sharp/`
+- License: **GNU LGPL v2.1 or later**; this project distributes the adapted work under LGPL v2.1
+- Upstream: https://github.com/tgies/Nuked-OPL3-fast
+- License text: `LICENSE` (LGPL v2.1)
+
 ## ymfmidi + ymfm (reference implementation / assets)
 
 - Project: **ymfmidi** by **Devin Acker** and **ymfm** by **Aaron Giles**
@@ -48,5 +56,6 @@ Ported files (BSD 3-Clause; see SPDX headers in-file):
 
 ## NuGet dependencies (not vendored)
 
-The `NukedOPL3Sharp.MidiPlayer` application depends on third-party NuGet packages (e.g. Avalonia, Silk.NET). These are
-not vendored in the repository source tree; consult the packages’ own license metadata when redistributing binaries.
+The `NukedOPL3Sharp.MidiPlayer` application depends on third-party NuGet packages (e.g. Avalonia, Silk.NET), and the
+benchmark project depends on BenchmarkDotNet. These are not vendored in the repository source tree; consult the
+packages’ own license metadata when redistributing binaries.

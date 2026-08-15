@@ -1,13 +1,62 @@
 // SPDX-FileCopyrightText: 2013-2026 Nuked-OPL3 by nukeykt
+// SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 
 namespace NukedOPL3Sharp;
 
+/// <summary>
+///     Emulates one YMF262-compatible OPL3 chip and owns all channel, operator, timer, and buffered-write state.
+/// </summary>
 public sealed partial class Opl3Chip
 {
     public const int WriteBufferSize = 1024;
     public const int WriteBufferDelay = 2;
     private const int ResampleFractionBits = 10;
+
+    /// <summary>
+    ///     Holds channels that can contribute to the next left-side mix.
+    /// </summary>
+    internal Opl3Channel[] LeftMixChannels { get; } = new Opl3Channel[18];
+
+    /// <summary>
+    ///     Holds channels that can contribute to the next right-side mix.
+    /// </summary>
+    internal Opl3Channel[] RightMixChannels { get; } = new Opl3Channel[18];
+
+    /// <summary>
+    ///     Counts valid entries in <see cref="LeftMixChannels"/>.
+    /// </summary>
+    internal byte LeftMixChannelCount;
+
+    /// <summary>
+    ///     Counts valid entries in <see cref="RightMixChannels"/>.
+    /// </summary>
+    internal byte RightMixChannelCount;
+
+    /// <summary>
+    ///     Requests a mix-list rebuild after routing or algorithm state changes.
+    /// </summary>
+    internal bool MixListsDirty;
+
+    /// <summary>
+    ///     Invalidates dormant operators whenever a register write occurs.
+    /// </summary>
+    internal uint WriteGeneration;
+
+    /// <summary>
+    ///     Holds the noise bit observed by the hi-hat operator during the current sample.
+    /// </summary>
+    internal uint NoiseHihat;
+
+    /// <summary>
+    ///     Holds the noise bit observed by the snare operator during the current sample.
+    /// </summary>
+    internal uint NoiseSnare;
+
+    /// <summary>
+    ///     Requests a tremolo refresh after its depth changes between timer steps.
+    /// </summary>
+    internal bool TremoloDirty;
 
     public Opl3Channel[] Channels { get; } = new Opl3Channel[18];
     public Opl3Operator[] Slots { get; } = new Opl3Operator[36];

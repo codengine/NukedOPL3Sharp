@@ -12,6 +12,17 @@ the chip from a Standard MIDI (.mid) file.
   - Loads `.mid` / `.midi` files.
   - Loads instrument banks in `.op2` and `.wopl` formats (user-selected; not bundled/autoloaded).
   - Renders audio by translating MIDI events into OPL3 register writes and then pulling PCM from `Opl3Chip`.
+- `NukedOPL3Sharp.Benchmarks` (BenchmarkDotNet suite)
+  - Separately measures dormant, 2-op, 4-op, rhythm, and dynamic buffered/resampled paths in nanoseconds per frame.
+
+## Benchmarks
+
+Build before measuring so BenchmarkDotNet uses current Release binaries:
+
+```powershell
+dotnet build NukedOPL3Sharp.Benchmarks\NukedOPL3Sharp.Benchmarks.csproj -c Release
+dotnet run --project NukedOPL3Sharp.Benchmarks\NukedOPL3Sharp.Benchmarks.csproj -c Release --no-build -- --filter '*' --artifacts BenchmarkDotNet.Artifacts\current
+```
 
 ## How the MIDI demo wires up the chip
 

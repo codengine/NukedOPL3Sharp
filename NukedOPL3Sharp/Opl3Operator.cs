@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2013-2026 Nuked-OPL3 by nukeykt
+// SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 
 namespace NukedOPL3Sharp;
@@ -35,8 +36,51 @@ namespace NukedOPL3Sharp;
  *     uint8_t slot_num;
  * };
  */
+/// <summary>
+///     Holds the register and synthesis state for one OPL3 operator slot.
+/// </summary>
 public sealed class Opl3Operator
 {
+    /// <summary>
+    ///     Holds total-level and key-scale attenuation that changes only when a related register or channel pitch changes.
+    /// </summary>
+    internal ushort CachedEnvelopeAttenuation;
+
+    /// <summary>
+    ///     Holds the key-scaled rate contribution shared by all four envelope stages.
+    /// </summary>
+    internal byte CachedEnvelopeKeyScale;
+
+    /// <summary>
+    ///     Holds the effective register rate for each envelope stage.
+    /// </summary>
+    internal byte[] EnvelopeRates { get; } = new byte[4];
+
+    /// <summary>
+    ///     Holds the high part of each resolved envelope-stage rate.
+    /// </summary>
+    internal byte[] EnvelopeRateHigh { get; } = new byte[4];
+
+    /// <summary>
+    ///     Holds the low part of each resolved envelope-stage rate.
+    /// </summary>
+    internal byte[] EnvelopeRateLow { get; } = new byte[4];
+
+    /// <summary>
+    ///     Holds the phase increment used while vibrato is disabled.
+    /// </summary>
+    internal uint PhaseIncrement;
+
+    /// <summary>
+    ///     Holds the phase increment for each global vibrato position.
+    /// </summary>
+    internal uint[] VibratoPhaseIncrements { get; } = new uint[8];
+
+    /// <summary>
+    ///     Matches the chip write generation while this operator is proven inert.
+    /// </summary>
+    internal uint DormantGeneration;
+
     /// <summary>
     ///     Effective envelope rate index for current state (after KSR/KSL computations).
     /// </summary>

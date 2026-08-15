@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2013-2026 Nuked-OPL3 by nukeykt
+// SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 
 namespace NukedOPL3Sharp;
@@ -8,9 +9,9 @@ namespace NukedOPL3Sharp;
 /// </summary>
 internal static class Opl3Lfo
 {
-    /* Original C: chip->tremolo = 0; chip->tremolopos = 0; chip->tremoloshift = 4;
-     *             chip->vibpos = 0; chip->vibshift = 1;
-     */
+    /// <summary>
+    ///     Restores both low-frequency oscillators to their power-on positions and depths.
+    /// </summary>
     internal static void Reset(Opl3Chip chip)
     {
         chip.Tremolo = 0;
@@ -20,21 +21,29 @@ internal static class Opl3Lfo
         chip.VibratoShift = 1;
     }
 
-    /* Original C: tremolo/vibrato update inside OPL3_Generate */
+    /// <summary>
+    ///     Advances timer-gated LFO positions and refreshes tremolo only when its visible value can change.
+    /// </summary>
     internal static void Advance(Opl3Chip chip)
     {
+        var updateTremolo = chip.TremoloDirty;
         if ((chip.Timer & 0x3f) == 0x3f)
         {
-            chip.TremoloPosition = (byte)((chip.TremoloPosition + 1) % 210);
+            chip.TremoloPosition++;
+            if (chip.TremoloPosition == 210)
+            {
+                chip.TremoloPosition = 0;
+            }
+
+            updateTremolo = true;
         }
 
-        if (chip.TremoloPosition < 105)
+        if (updateTremolo)
         {
-            chip.Tremolo = (byte)(chip.TremoloPosition >> chip.TremoloShift);
-        }
-        else
-        {
-            chip.Tremolo = (byte)((210 - chip.TremoloPosition) >> chip.TremoloShift);
+            chip.Tremolo = chip.TremoloPosition < 105
+                ? (byte)(chip.TremoloPosition >> chip.TremoloShift)
+                : (byte)((210 - chip.TremoloPosition) >> chip.TremoloShift);
+            chip.TremoloDirty = false;
         }
 
         if ((chip.Timer & 0x3ff) == 0x3ff)
@@ -43,12 +52,25 @@ internal static class Opl3Lfo
         }
     }
 
-    /* Original C: chip->tremoloshift = (((v >> 7) ^ 1) << 1) + 2;
-     *             chip->vibshift = ((v >> 6) & 1) ^ 1;
-     */
-    internal static void ConfigureDepth(Opl3Chip chip, byte value)
+    /// <summary>
+    ///     Applies LFO depth bits and reports whether every vibrato phase-increment cache must be rebuilt.
+    /// </summary>
+    internal static bool ConfigureDepth(Opl3Chip chip, byte value)
     {
-        chip.TremoloShift = (byte)((((value >> 7) ^ 1) << 1) + 2);
-        chip.VibratoShift = (byte)(((value >> 6) & 0x01) ^ 1);
+        var tremoloShift = (byte)((((value >> 7) ^ 1) << 1) + 2);
+        var vibratoShift = (byte)(((value >> 6) & 0x01) ^ 1);
+        if (chip.TremoloShift != tremoloShift)
+        {
+            chip.TremoloDirty = true;
+            chip.TremoloShift = tremoloShift;
+        }
+
+        if (chip.VibratoShift == vibratoShift)
+        {
+            return false;
+        }
+
+        chip.VibratoShift = vibratoShift;
+        return true;
     }
 }

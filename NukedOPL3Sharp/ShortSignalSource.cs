@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2013-2026 Nuked-OPL3 by nukeykt
+// SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 
 using System.Runtime.CompilerServices;
@@ -15,7 +16,8 @@ public readonly struct ShortSignalSource
     {
         Zero = 0,
         Output = 1,
-        Feedback = 2
+        Feedback = 2,
+        PreviousOutput = 3
     }
 
     private readonly Opl3Operator? _source;
@@ -27,8 +29,14 @@ public readonly struct ShortSignalSource
         _kind = kind;
     }
 
+    /// <summary>
+    ///     Provides a source that always reads zero.
+    /// </summary>
     public static ShortSignalSource Zero => default;
 
+    /// <summary>
+    ///     Reads the currently selected signal without allocating a delegate.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public short Read()
     {
@@ -36,10 +44,40 @@ public readonly struct ShortSignalSource
         {
             SourceKind.Output => _source!.Out,
             SourceKind.Feedback => _source!.FeedbackModifiedSignal,
+            SourceKind.PreviousOutput => _source!.PreviousOutputSample,
             _ => 0
         };
     }
 
+    /// <summary>
+    ///     Redirects outputs at or beyond the delay boundary to the operator's previous sample.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ShortSignalSource DelayOutputFrom(byte firstDelayedSlot)
+    {
+        return _kind == SourceKind.Output && _source!.SlotIndex >= firstDelayedSlot
+            ? new ShortSignalSource(_source, SourceKind.PreviousOutput)
+            : this;
+    }
+
+    /// <summary>
+    ///     Confirms that a modulation source cannot become nonzero before the next register write.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool CanRemainZero(Opl3Operator owner, uint writeGeneration)
+    {
+        return _kind switch
+        {
+            SourceKind.Zero => true,
+            SourceKind.Feedback => ReferenceEquals(_source, owner),
+            SourceKind.Output => _source!.DormantGeneration == writeGeneration,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    ///     Selects an operator's current output.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShortSignalSource FromOutput(Opl3Operator source)
     {
@@ -48,6 +86,9 @@ public readonly struct ShortSignalSource
             : new ShortSignalSource(source, SourceKind.Output);
     }
 
+    /// <summary>
+    ///     Selects an operator's feedback signal.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShortSignalSource FromFeedback(Opl3Operator source)
     {

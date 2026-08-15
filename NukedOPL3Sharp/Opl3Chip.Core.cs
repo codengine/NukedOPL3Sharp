@@ -1,56 +1,80 @@
 // SPDX-FileCopyrightText: 2013-2026 Nuked-OPL3 by nukeykt
+// SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace NukedOPL3Sharp;
 
 public sealed partial class Opl3Chip
 {
-    /* Original C: static void OPL3_PhaseGenerate(opl3_slot *slot) */
-    private static void PhaseGenerate(Opl3Operator slot)
+    private static void UpdatePhaseIncrement(Opl3Operator slot)
     {
         var chip = slot.Chip ?? throw new InvalidOperationException("Slot chip not assigned.");
         var channel = slot.Channel ?? throw new InvalidOperationException("Slot channel not assigned.");
+        var baseFrequency = ((uint)channel.FNumber << channel.Block) >> 1;
+        var multiplier = Opl3Tables.ReadFrequencyMultiplier(slot.RegFrequencyMultiplier);
+        slot.PhaseIncrement = (baseFrequency * multiplier) >> 1;
 
-        int fNum = channel.FNumber;
-        if (slot.RegVibrato != 0)
+        for (byte vibratoPosition = 0; vibratoPosition < slot.VibratoPhaseIncrements.Length; vibratoPosition++)
         {
-            var range = (fNum >> 7) & 0x07;
-            var vibPos = chip.VibratoPosition;
+            var fNumber = channel.FNumber;
+            var range = (sbyte)((fNumber >> 7) & 0x07);
 
-            if ((vibPos & 0x03) == 0)
+            if ((vibratoPosition & 0x03) == 0)
             {
                 range = 0;
             }
-            else if ((vibPos & 0x01) != 0)
+            else if ((vibratoPosition & 0x01) != 0)
             {
                 range >>= 1;
             }
 
             range >>= chip.VibratoShift;
 
-            if ((vibPos & 0x04) != 0)
+            if ((vibratoPosition & 0x04) != 0)
             {
-                range = -range;
+                range = (sbyte)-range;
             }
 
-            fNum = unchecked(fNum + range);
+            fNumber = unchecked((ushort)(fNumber + range));
+            slot.VibratoPhaseIncrements[vibratoPosition] =
+                (((uint)fNumber << channel.Block) >> 1) * multiplier >> 1;
         }
+    }
 
-        var baseFreq = unchecked((uint)((fNum << channel.Block) >> 1));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PhaseGenerateNormal(Opl3Operator slot)
+    {
+        var chip = slot.Chip ?? throw new InvalidOperationException("Slot chip not assigned.");
+        var phaseIncrement = slot.RegVibrato != 0
+            ? slot.VibratoPhaseIncrements[chip.VibratoPosition]
+            : slot.PhaseIncrement;
         var phase = (ushort)(slot.RegPhaseGeneratorAccumulator >> 9);
-
         if (slot.RegPhaseResetRequest != 0)
         {
             slot.RegPhaseGeneratorAccumulator = 0;
         }
 
-        var freqMultiplier = Opl3Tables.ReadFrequencyMultiplier(slot.RegFrequencyMultiplier);
-        slot.RegPhaseGeneratorAccumulator =
-            unchecked(slot.RegPhaseGeneratorAccumulator + ((baseFreq * freqMultiplier) >> 1));
+        slot.RegPhaseGeneratorAccumulator = unchecked(slot.RegPhaseGeneratorAccumulator + phaseIncrement);
+        slot.PhaseGeneratorOutput = phase;
+    }
 
-        var noise = chip.Noise;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PhaseGenerateRhythm(Opl3Operator slot)
+    {
+        var chip = slot.Chip ?? throw new InvalidOperationException("Slot chip not assigned.");
+        var phaseIncrement = slot.RegVibrato != 0
+            ? slot.VibratoPhaseIncrements[chip.VibratoPosition]
+            : slot.PhaseIncrement;
+        var phase = (ushort)(slot.RegPhaseGeneratorAccumulator >> 9);
+        if (slot.RegPhaseResetRequest != 0)
+        {
+            slot.RegPhaseGeneratorAccumulator = 0;
+        }
+
+        slot.RegPhaseGeneratorAccumulator = unchecked(slot.RegPhaseGeneratorAccumulator + phaseIncrement);
         slot.PhaseGeneratorOutput = phase;
 
         switch (slot.SlotIndex)
@@ -61,24 +85,13 @@ public sealed partial class Opl3Chip
                 chip.RhythmHihatBit3 = (byte)((phase >> 3) & 1);
                 chip.RhythmHihatBit7 = (byte)((phase >> 7) & 1);
                 chip.RhythmHihatBit8 = (byte)((phase >> 8) & 1);
-                break;
-            /* tc */
-            case 17 when (chip.Rhythm & 0x20) != 0:
-                chip.RhythmTomBit3 = (byte)((phase >> 3) & 1);
-                chip.RhythmTomBit5 = (byte)((phase >> 5) & 1);
-                break;
-        }
-
-        if ((chip.Rhythm & 0x20) != 0)
-        {
-            var rmXor = (byte)(((chip.RhythmHihatBit2 ^ chip.RhythmHihatBit7)
-                                | (chip.RhythmHihatBit3 ^ chip.RhythmTomBit5)
-                                | (chip.RhythmTomBit3 ^ chip.RhythmTomBit5)) & 0x01);
-            switch (slot.SlotIndex)
-            {
-                case 13: /* hh */
+                if ((chip.Rhythm & 0x20) != 0)
+                {
+                    var rmXor = (byte)((chip.RhythmHihatBit2 ^ chip.RhythmHihatBit7)
+                                       | (chip.RhythmHihatBit3 ^ chip.RhythmTomBit5)
+                                       | (chip.RhythmTomBit3 ^ chip.RhythmTomBit5));
                     slot.PhaseGeneratorOutput = (ushort)(rmXor << 9);
-                    if (((rmXor ^ noise) & 0x01) != 0)
+                    if ((rmXor ^ chip.NoiseHihat) != 0)
                     {
                         slot.PhaseGeneratorOutput = unchecked((ushort)(slot.PhaseGeneratorOutput | 0xd0));
                     }
@@ -86,23 +99,47 @@ public sealed partial class Opl3Chip
                     {
                         slot.PhaseGeneratorOutput = unchecked((ushort)(slot.PhaseGeneratorOutput | 0x34));
                     }
-
-                    break;
-                case 16: /* sd */
-                {
-                    var noiseBit = (byte)(noise & 0x01);
-                    slot.PhaseGeneratorOutput = (ushort)(((chip.RhythmHihatBit8 & 0x01) << 9)
-                                                         | (((chip.RhythmHihatBit8 ^ noiseBit) & 0x01) << 8));
-                    break;
                 }
-                case 17: /* tc */
-                    slot.PhaseGeneratorOutput = unchecked((ushort)((rmXor << 9) | 0x80));
-                    break;
-            }
-        }
 
-        var nBit = ((noise >> 14) ^ noise) & 0x01;
-        chip.Noise = (noise >> 1) | (nBit << 22);
+                break;
+            case 16: /* sd */
+                if ((chip.Rhythm & 0x20) != 0)
+                {
+                    slot.PhaseGeneratorOutput = (ushort)(((uint)(chip.RhythmHihatBit8 & 0x01) << 9)
+                                                         | (((uint)chip.RhythmHihatBit8 ^ chip.NoiseSnare) << 8));
+                }
+
+                break;
+            case 17: /* tc */
+                if ((chip.Rhythm & 0x20) != 0)
+                {
+                    chip.RhythmTomBit3 = (byte)((phase >> 3) & 1);
+                    chip.RhythmTomBit5 = (byte)((phase >> 5) & 1);
+                    var rmXor = (byte)((chip.RhythmHihatBit2 ^ chip.RhythmHihatBit7)
+                                       | (chip.RhythmHihatBit3 ^ chip.RhythmTomBit5)
+                                       | (chip.RhythmTomBit3 ^ chip.RhythmTomBit5));
+                    slot.PhaseGeneratorOutput = unchecked((ushort)((rmXor << 9) | 0x80));
+                }
+
+                break;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void AdvanceNoise()
+    {
+        var state = Noise;
+        var feedback0To8 = (state ^ (state >> 14)) & 0x1ffu;
+        var feedback9To17 = ((state >> 9) ^ feedback0To8) & 0x1ffu;
+        var feedback18To22 = ((state >> 18) ^ feedback9To17) & 0x1fu;
+        var feedback23To31 = feedback0To8 ^ ((feedback9To17 >> 5) | (feedback18To22 << 4));
+        var feedback32To35 = (feedback9To17 ^ feedback23To31) & 0x0fu;
+        NoiseHihat = (state >> 13) & 1u;
+        NoiseSnare = (state >> 16) & 1u;
+        Noise = ((feedback9To17 >> 4) & 0x1fu)
+                | (feedback18To22 << 5)
+                | (feedback23To31 << 10)
+                | (feedback32To35 << 19);
     }
 
     /* Original C: static void OPL3_SlotWrite20(opl3_slot *slot, uint8_t data) */
@@ -111,8 +148,12 @@ public sealed partial class Opl3Chip
         slot.TremoloEnabled = ((data >> 7) & 0x01) != 0;
         slot.RegVibrato = (byte)((data >> 6) & 0x01);
         slot.RegOperatorType = (byte)((data >> 5) & 0x01);
+        slot.EnvelopeRates[(byte)EnvelopeGeneratorStage.Sustain] =
+            slot.RegOperatorType != 0 ? (byte)0 : slot.RegReleaseRate;
         slot.RegKeyScaleRate = (byte)((data >> 4) & 0x01);
         slot.RegFrequencyMultiplier = (byte)(data & 0x0f);
+        Opl3Envelope.UpdateRates(slot);
+        UpdatePhaseIncrement(slot);
     }
 
     /* Original C: static void OPL3_SlotWrite40(opl3_slot *slot, uint8_t data) */
@@ -120,7 +161,7 @@ public sealed partial class Opl3Chip
     {
         slot.RegKeyScaleLevel = (byte)((data >> 6) & 0x03);
         slot.RegTotalLevel = (byte)(data & 0x3f);
-        Opl3Envelope.EnvelopeUpdateKsl(slot);
+        Opl3Envelope.UpdateKeyScaleLevel(slot);
     }
 
     /* Original C: static void OPL3_SlotWrite60(opl3_slot *slot, uint8_t data) */
@@ -128,6 +169,9 @@ public sealed partial class Opl3Chip
     {
         slot.RegAttackRate = (byte)((data >> 4) & 0x0f);
         slot.RegDecayRate = (byte)(data & 0x0f);
+        slot.EnvelopeRates[(byte)EnvelopeGeneratorStage.Attack] = slot.RegAttackRate;
+        slot.EnvelopeRates[(byte)EnvelopeGeneratorStage.Decay] = slot.RegDecayRate;
+        Opl3Envelope.UpdateRates(slot);
     }
 
     /* Original C: static void OPL3_SlotWrite80(opl3_slot *slot, uint8_t data) */
@@ -140,6 +184,10 @@ public sealed partial class Opl3Chip
         }
 
         slot.RegReleaseRate = (byte)(data & 0x0f);
+        slot.EnvelopeRates[(byte)EnvelopeGeneratorStage.Sustain] =
+            slot.RegOperatorType != 0 ? (byte)0 : slot.RegReleaseRate;
+        slot.EnvelopeRates[(byte)EnvelopeGeneratorStage.Release] = slot.RegReleaseRate;
+        Opl3Envelope.UpdateRates(slot);
     }
 
     /* Original C: static void OPL3_SlotWriteE0(opl3_slot *slot, uint8_t data) */
@@ -161,12 +209,11 @@ public sealed partial class Opl3Chip
 
     /* Original C: static void OPL3_SlotCalcFB(opl3_slot *slot) */
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SlotCalcFeedback(Opl3Operator slot)
+    private static void SlotCalcFeedback(Opl3Operator slot, byte feedback)
     {
-        var channel = slot.Channel ?? throw new InvalidOperationException("Slot channel not assigned.");
-        if (channel.Feedback != 0)
+        if (feedback != 0)
         {
-            slot.FeedbackModifiedSignal = (short)((slot.PreviousOutputSample + slot.Out) >> (0x09 - channel.Feedback));
+            slot.FeedbackModifiedSignal = (short)((slot.PreviousOutputSample + slot.Out) >> (0x09 - feedback));
         }
         else
         {
@@ -177,7 +224,7 @@ public sealed partial class Opl3Chip
     }
 
     /* Original C: static void OPL3_ChannelSetupAlg(opl3_channel *channel) */
-    private static void ChannelSetupAlgorithm(Opl3Channel channel)
+    private static void ChannelSetupAlgorithmBody(Opl3Channel channel)
     {
         if (channel.ChannelType == ChannelType.Drum)
         {
@@ -215,6 +262,7 @@ public sealed partial class Opl3Chip
             pair.Out[1] = ShortSignalSource.Zero;
             pair.Out[2] = ShortSignalSource.Zero;
             pair.Out[3] = ShortSignalSource.Zero;
+            pair.OutputCount = 0;
 
             switch (channel.Algorithm & 0x03)
             {
@@ -227,6 +275,7 @@ public sealed partial class Opl3Chip
                     channel.Out[1] = ShortSignalSource.Zero;
                     channel.Out[2] = ShortSignalSource.Zero;
                     channel.Out[3] = ShortSignalSource.Zero;
+                    channel.OutputCount = 1;
                     break;
                 case 0x01:
                     pair.Slotz[0].ModulationSource = pair.Slotz[0].FeedbackSignal;
@@ -237,6 +286,7 @@ public sealed partial class Opl3Chip
                     channel.Out[1] = channel.Slotz[1].OutputSignal;
                     channel.Out[2] = ShortSignalSource.Zero;
                     channel.Out[3] = ShortSignalSource.Zero;
+                    channel.OutputCount = 2;
                     break;
                 case 0x02:
                     pair.Slotz[0].ModulationSource = pair.Slotz[0].FeedbackSignal;
@@ -247,6 +297,7 @@ public sealed partial class Opl3Chip
                     channel.Out[1] = channel.Slotz[1].OutputSignal;
                     channel.Out[2] = ShortSignalSource.Zero;
                     channel.Out[3] = ShortSignalSource.Zero;
+                    channel.OutputCount = 2;
                     break;
                 case 0x03:
                     pair.Slotz[0].ModulationSource = pair.Slotz[0].FeedbackSignal;
@@ -257,6 +308,7 @@ public sealed partial class Opl3Chip
                     channel.Out[1] = channel.Slotz[0].OutputSignal;
                     channel.Out[2] = channel.Slotz[1].OutputSignal;
                     channel.Out[3] = ShortSignalSource.Zero;
+                    channel.OutputCount = 3;
                     break;
             }
         }
@@ -271,6 +323,7 @@ public sealed partial class Opl3Chip
                     channel.Out[1] = ShortSignalSource.Zero;
                     channel.Out[2] = ShortSignalSource.Zero;
                     channel.Out[3] = ShortSignalSource.Zero;
+                    channel.OutputCount = 1;
                     break;
                 case 0x01:
                     channel.Slotz[0].ModulationSource = channel.Slotz[0].FeedbackSignal;
@@ -279,8 +332,36 @@ public sealed partial class Opl3Chip
                     channel.Out[1] = channel.Slotz[1].OutputSignal;
                     channel.Out[2] = ShortSignalSource.Zero;
                     channel.Out[3] = ShortSignalSource.Zero;
+                    channel.OutputCount = 2;
                     break;
             }
+        }
+    }
+
+    private static void ChannelSetupAlgorithm(Opl3Channel channel)
+    {
+        ChannelSetupAlgorithmBody(channel);
+        UpdateDelayedOutputs(channel);
+        if (channel.Pair is { } pair)
+        {
+            UpdateDelayedOutputs(pair);
+        }
+
+        var chip = channel.Chip ?? throw new InvalidOperationException("Channel chip not assigned.");
+        chip.MixListsDirty = true;
+    }
+
+    private static void UpdateDelayedOutputs(Opl3Channel channel)
+    {
+        for (var output = 0; output < channel.Out.Length; output++)
+        {
+#if OPL_ENABLE_STEREOEXT
+            channel.LeftOutputs[output] = channel.Out[output];
+            channel.RightOutputs[output] = channel.Out[output];
+#else
+            channel.LeftOutputs[output] = channel.Out[output].DelayOutputFrom(15);
+            channel.RightOutputs[output] = channel.Out[output].DelayOutputFrom(33);
+#endif
         }
     }
 
@@ -299,16 +380,19 @@ public sealed partial class Opl3Chip
             channel6.Out[1] = channel6.Slotz[1].OutputSignal;
             channel6.Out[2] = ShortSignalSource.Zero;
             channel6.Out[3] = ShortSignalSource.Zero;
+            channel6.OutputCount = 2;
 
             channel7.Out[0] = channel7.Slotz[0].OutputSignal;
             channel7.Out[1] = channel7.Slotz[0].OutputSignal;
             channel7.Out[2] = channel7.Slotz[1].OutputSignal;
             channel7.Out[3] = channel7.Slotz[1].OutputSignal;
+            channel7.OutputCount = 4;
 
             channel8.Out[0] = channel8.Slotz[0].OutputSignal;
             channel8.Out[1] = channel8.Slotz[0].OutputSignal;
             channel8.Out[2] = channel8.Slotz[1].OutputSignal;
             channel8.Out[3] = channel8.Slotz[1].OutputSignal;
+            channel8.OutputCount = 4;
 
             for (var ch = 6; ch < 9; ch++)
             {
@@ -321,49 +405,49 @@ public sealed partial class Opl3Chip
 
             if ((chip.Rhythm & 0x01) != 0) /* hh */
             {
-                Opl3Envelope.EnvelopeKeyOn(channel7.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOn(channel7.Slotz[0], EnvelopeKeyType.Drum);
             }
             else
             {
-                Opl3Envelope.EnvelopeKeyOff(channel7.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel7.Slotz[0], EnvelopeKeyType.Drum);
             }
 
             if ((chip.Rhythm & 0x02) != 0) /* tc */
             {
-                Opl3Envelope.EnvelopeKeyOn(channel8.Slotz[1], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOn(channel8.Slotz[1], EnvelopeKeyType.Drum);
             }
             else
             {
-                Opl3Envelope.EnvelopeKeyOff(channel8.Slotz[1], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel8.Slotz[1], EnvelopeKeyType.Drum);
             }
 
             if ((chip.Rhythm & 0x04) != 0) /* tom */
             {
-                Opl3Envelope.EnvelopeKeyOn(channel8.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOn(channel8.Slotz[0], EnvelopeKeyType.Drum);
             }
             else
             {
-                Opl3Envelope.EnvelopeKeyOff(channel8.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel8.Slotz[0], EnvelopeKeyType.Drum);
             }
 
             if ((chip.Rhythm & 0x08) != 0) /* sd */
             {
-                Opl3Envelope.EnvelopeKeyOn(channel7.Slotz[1], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOn(channel7.Slotz[1], EnvelopeKeyType.Drum);
             }
             else
             {
-                Opl3Envelope.EnvelopeKeyOff(channel7.Slotz[1], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel7.Slotz[1], EnvelopeKeyType.Drum);
             }
 
             if ((chip.Rhythm & 0x10) != 0) /* bd */
             {
-                Opl3Envelope.EnvelopeKeyOn(channel6.Slotz[0], EnvelopeKeyType.Drum);
-                Opl3Envelope.EnvelopeKeyOn(channel6.Slotz[1], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOn(channel6.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOn(channel6.Slotz[1], EnvelopeKeyType.Drum);
             }
             else
             {
-                Opl3Envelope.EnvelopeKeyOff(channel6.Slotz[0], EnvelopeKeyType.Drum);
-                Opl3Envelope.EnvelopeKeyOff(channel6.Slotz[1], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel6.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel6.Slotz[1], EnvelopeKeyType.Drum);
             }
         }
         else
@@ -373,8 +457,8 @@ public sealed partial class Opl3Chip
                 var channel = chip.Channels[ch];
                 channel.ChannelType = ChannelType.TwoOp;
                 ChannelSetupAlgorithm(channel);
-                Opl3Envelope.EnvelopeKeyOff(channel.Slotz[0], EnvelopeKeyType.Drum);
-                Opl3Envelope.EnvelopeKeyOff(channel.Slotz[1], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel.Slotz[0], EnvelopeKeyType.Drum);
+                Opl3Envelope.KeyOff(channel.Slotz[1], EnvelopeKeyType.Drum);
             }
         }
     }
@@ -390,8 +474,12 @@ public sealed partial class Opl3Chip
 
         channel.FNumber = (ushort)((channel.FNumber & 0x300) | data);
         channel.KeyScaleValue = (byte)((channel.Block << 1) | ((channel.FNumber >> (0x09 - chip.Nts)) & 0x01));
-        Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[0]);
-        Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[1]);
+        Opl3Envelope.UpdateKeyScaleLevel(channel.Slotz[0]);
+        Opl3Envelope.UpdateKeyScaleLevel(channel.Slotz[1]);
+        Opl3Envelope.UpdateRates(channel.Slotz[0]);
+        Opl3Envelope.UpdateRates(channel.Slotz[1]);
+        UpdatePhaseIncrement(channel.Slotz[0]);
+        UpdatePhaseIncrement(channel.Slotz[1]);
 
         if (chip.NewM == 0 || channel.ChannelType != ChannelType.FourOp)
         {
@@ -401,8 +489,12 @@ public sealed partial class Opl3Chip
         var pair = channel.Pair ?? throw new InvalidOperationException("Missing 4-op pair.");
         pair.FNumber = channel.FNumber;
         pair.KeyScaleValue = channel.KeyScaleValue;
-        Opl3Envelope.EnvelopeUpdateKsl(pair.Slotz[0]);
-        Opl3Envelope.EnvelopeUpdateKsl(pair.Slotz[1]);
+        Opl3Envelope.UpdateKeyScaleLevel(pair.Slotz[0]);
+        Opl3Envelope.UpdateKeyScaleLevel(pair.Slotz[1]);
+        Opl3Envelope.UpdateRates(pair.Slotz[0]);
+        Opl3Envelope.UpdateRates(pair.Slotz[1]);
+        UpdatePhaseIncrement(pair.Slotz[0]);
+        UpdatePhaseIncrement(pair.Slotz[1]);
     }
 
     /* Original C: static void OPL3_ChannelWriteB0(opl3_channel *channel, uint8_t data) */
@@ -417,8 +509,12 @@ public sealed partial class Opl3Chip
         channel.FNumber = (ushort)((channel.FNumber & 0xff) | ((data & 0x03) << 8));
         channel.Block = (byte)((data >> 2) & 0x07);
         channel.KeyScaleValue = (byte)((channel.Block << 1) | ((channel.FNumber >> (0x09 - chip.Nts)) & 0x01));
-        Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[0]);
-        Opl3Envelope.EnvelopeUpdateKsl(channel.Slotz[1]);
+        Opl3Envelope.UpdateKeyScaleLevel(channel.Slotz[0]);
+        Opl3Envelope.UpdateKeyScaleLevel(channel.Slotz[1]);
+        Opl3Envelope.UpdateRates(channel.Slotz[0]);
+        Opl3Envelope.UpdateRates(channel.Slotz[1]);
+        UpdatePhaseIncrement(channel.Slotz[0]);
+        UpdatePhaseIncrement(channel.Slotz[1]);
 
         if (chip.NewM == 0 || channel.ChannelType != ChannelType.FourOp)
         {
@@ -429,8 +525,12 @@ public sealed partial class Opl3Chip
         pair.FNumber = channel.FNumber;
         pair.Block = channel.Block;
         pair.KeyScaleValue = channel.KeyScaleValue;
-        Opl3Envelope.EnvelopeUpdateKsl(pair.Slotz[0]);
-        Opl3Envelope.EnvelopeUpdateKsl(pair.Slotz[1]);
+        Opl3Envelope.UpdateKeyScaleLevel(pair.Slotz[0]);
+        Opl3Envelope.UpdateKeyScaleLevel(pair.Slotz[1]);
+        Opl3Envelope.UpdateRates(pair.Slotz[0]);
+        Opl3Envelope.UpdateRates(pair.Slotz[1]);
+        UpdatePhaseIncrement(pair.Slotz[0]);
+        UpdatePhaseIncrement(pair.Slotz[1]);
     }
 
     /* Original C: static void OPL3_ChannelUpdateAlg(opl3_channel *channel) */
@@ -512,6 +612,7 @@ public sealed partial class Opl3Chip
         int leftIndex = data ^ 0xff;
         channel.LeftPan = panPot[leftIndex];
         channel.RightPan = panPot[data];
+        chip.MixListsDirty = true;
     }
 #endif
 
@@ -527,22 +628,22 @@ public sealed partial class Opl3Chip
                 case ChannelType.FourOp:
                 {
                     var pair = channel.Pair ?? throw new InvalidOperationException("Missing 4-op pair.");
-                    Opl3Envelope.EnvelopeKeyOn(channel.Slotz[0], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOn(channel.Slotz[1], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOn(pair.Slotz[0], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOn(pair.Slotz[1], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOn(channel.Slotz[0], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOn(channel.Slotz[1], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOn(pair.Slotz[0], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOn(pair.Slotz[1], EnvelopeKeyType.Normal);
                     break;
                 }
                 case ChannelType.TwoOp or ChannelType.Drum:
-                    Opl3Envelope.EnvelopeKeyOn(channel.Slotz[0], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOn(channel.Slotz[1], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOn(channel.Slotz[0], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOn(channel.Slotz[1], EnvelopeKeyType.Normal);
                     break;
             }
         }
         else
         {
-            Opl3Envelope.EnvelopeKeyOn(channel.Slotz[0], EnvelopeKeyType.Normal);
-            Opl3Envelope.EnvelopeKeyOn(channel.Slotz[1], EnvelopeKeyType.Normal);
+            Opl3Envelope.KeyOn(channel.Slotz[0], EnvelopeKeyType.Normal);
+            Opl3Envelope.KeyOn(channel.Slotz[1], EnvelopeKeyType.Normal);
         }
     }
 
@@ -558,23 +659,23 @@ public sealed partial class Opl3Chip
                 case ChannelType.FourOp:
                 {
                     var pair = channel.Pair ?? throw new InvalidOperationException("Missing 4-op pair.");
-                    Opl3Envelope.EnvelopeKeyOff(channel.Slotz[0], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOff(channel.Slotz[1], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOff(pair.Slotz[0], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOff(pair.Slotz[1], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOff(channel.Slotz[0], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOff(channel.Slotz[1], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOff(pair.Slotz[0], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOff(pair.Slotz[1], EnvelopeKeyType.Normal);
                     break;
                 }
                 case ChannelType.TwoOp:
                 case ChannelType.Drum:
-                    Opl3Envelope.EnvelopeKeyOff(channel.Slotz[0], EnvelopeKeyType.Normal);
-                    Opl3Envelope.EnvelopeKeyOff(channel.Slotz[1], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOff(channel.Slotz[0], EnvelopeKeyType.Normal);
+                    Opl3Envelope.KeyOff(channel.Slotz[1], EnvelopeKeyType.Normal);
                     break;
             }
         }
         else
         {
-            Opl3Envelope.EnvelopeKeyOff(channel.Slotz[0], EnvelopeKeyType.Normal);
-            Opl3Envelope.EnvelopeKeyOff(channel.Slotz[1], EnvelopeKeyType.Normal);
+            Opl3Envelope.KeyOff(channel.Slotz[0], EnvelopeKeyType.Normal);
+            Opl3Envelope.KeyOff(channel.Slotz[1], EnvelopeKeyType.Normal);
         }
     }
 
@@ -617,25 +718,196 @@ public sealed partial class Opl3Chip
         };
     }
 
-    /* Original C: static void OPL3_ProcessSlot(opl3_slot *slot) */
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ProcessSlot(Opl3Operator slot)
+    private static void ProcessSlot(Opl3Operator slot, byte feedback, bool maybeRhythm)
     {
-        SlotCalcFeedback(slot);
-        Opl3Envelope.EnvelopeCalc(slot);
-        PhaseGenerate(slot);
+        var rhythmSlot = maybeRhythm && slot.SlotIndex is 13 or 16 or 17;
+        if (slot.RegKeyState == 0 && slot.EnvelopeGeneratorOutput == 0x1ff && !rhythmSlot)
+        {
+            var chip = slot.Chip ?? throw new InvalidOperationException("Slot chip not assigned.");
+            if (feedback == 0 && slot.PhaseIncrement == 0 && slot.Out == 0
+                && slot.ModulationSource.Read() == 0 && slot.CachedEnvelopeAttenuation == 0
+                && (!slot.TremoloEnabled || chip.Tremolo == 0)
+                && slot.RegPhaseGeneratorAccumulator == 0 && slot.RegVibrato == 0 && slot.RegWaveformSelect == 0)
+            {
+                slot.FeedbackModifiedSignal = 0;
+                slot.PreviousOutputSample = 0;
+                slot.EnvelopeGeneratorLevel = 0x1ff;
+                slot.RegPhaseResetRequest = 0;
+                slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Release;
+                slot.PhaseGeneratorOutput = 0;
+                return;
+            }
+
+            SlotCalcFeedback(slot, feedback);
+            slot.EnvelopeGeneratorLevel = (ushort)(slot.EnvelopeGeneratorOutput + slot.CachedEnvelopeAttenuation
+                                                    + (slot.TremoloEnabled ? chip.Tremolo : 0));
+            slot.RegPhaseResetRequest = 0;
+            slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Release;
+
+            var phaseIncrement = slot.RegVibrato != 0
+                ? slot.VibratoPhaseIncrements[chip.VibratoPosition]
+                : slot.PhaseIncrement;
+            var phase = (ushort)(slot.RegPhaseGeneratorAccumulator >> 9);
+            slot.RegPhaseGeneratorAccumulator = unchecked(slot.RegPhaseGeneratorAccumulator + phaseIncrement);
+            slot.PhaseGeneratorOutput = phase;
+            slot.Out = Opl3Envelope.GenerateSilentWaveform(slot);
+            return;
+        }
+
+        if (slot.EnvelopeGeneratorState == (byte)EnvelopeGeneratorStage.Sustain && slot.RegKeyState != 0
+            && slot.EnvelopeRates[(byte)EnvelopeGeneratorStage.Sustain] == 0)
+        {
+            var chip = slot.Chip ?? throw new InvalidOperationException("Slot chip not assigned.");
+            SlotCalcFeedback(slot, feedback);
+            slot.EnvelopeGeneratorLevel = (ushort)(slot.EnvelopeGeneratorOutput + slot.CachedEnvelopeAttenuation
+                                                    + (slot.TremoloEnabled ? chip.Tremolo : 0));
+            slot.RegPhaseResetRequest = 0;
+            if ((slot.EnvelopeGeneratorOutput & 0x1f8) == 0x1f8)
+            {
+                slot.EnvelopeGeneratorOutput = 0x1ff;
+            }
+
+            if (slot.RegVibrato == 0 && !rhythmSlot)
+            {
+                var phase = (ushort)(slot.RegPhaseGeneratorAccumulator >> 9);
+                slot.RegPhaseGeneratorAccumulator = unchecked(slot.RegPhaseGeneratorAccumulator + slot.PhaseIncrement);
+                slot.PhaseGeneratorOutput = phase;
+            }
+            else if (maybeRhythm)
+            {
+                PhaseGenerateRhythm(slot);
+            }
+            else
+            {
+                PhaseGenerateNormal(slot);
+            }
+
+            SlotGenerate(slot);
+            return;
+        }
+
+        SlotCalcFeedback(slot, feedback);
+        Opl3Envelope.Calculate(slot);
+        if (maybeRhythm)
+        {
+            PhaseGenerateRhythm(slot);
+        }
+        else
+        {
+            PhaseGenerateNormal(slot);
+        }
+
         SlotGenerate(slot);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ProcessSlotIfActive(Opl3Operator slot, byte feedback, bool maybeRhythm, uint writeGeneration)
+    {
+        if (slot.DormantGeneration == writeGeneration)
+        {
+            return;
+        }
+
+        var rhythmSlot = maybeRhythm && slot.SlotIndex is 13 or 16 or 17;
+        if (slot.RegKeyState == 0 && slot.EnvelopeGeneratorOutput == 0x1ff
+            && slot.EnvelopeGeneratorState == (byte)EnvelopeGeneratorStage.Release && !rhythmSlot
+            && feedback == 0 && slot.PhaseIncrement == 0 && slot.Out == 0 && slot.PreviousOutputSample == 0
+            && slot.ModulationSource.Read() == 0 && slot.CachedEnvelopeAttenuation == 0 && !slot.TremoloEnabled
+            && slot.RegPhaseGeneratorAccumulator == 0 && slot.RegVibrato == 0 && slot.RegWaveformSelect == 0)
+        {
+            if (slot.ModulationSource.CanRemainZero(slot, writeGeneration))
+            {
+                slot.DormantGeneration = writeGeneration;
+            }
+
+            return;
+        }
+
+        ProcessSlot(slot, feedback, maybeRhythm);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int SumChannelOutputs(Opl3Channel channel)
+    private static void ProcessChannelSlots(Opl3Channel channel, bool maybeRhythm, uint writeGeneration)
     {
-        var outputs = channel.Out;
-        return outputs[0].Read()
-               + outputs[1].Read()
-               + outputs[2].Read()
-               + outputs[3].Read();
+        var feedback = channel.Feedback;
+        ProcessSlotIfActive(channel.Slotz[0], feedback, maybeRhythm, writeGeneration);
+        ProcessSlotIfActive(channel.Slotz[1], feedback, maybeRhythm, writeGeneration);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int SumChannelOutputs(ShortSignalSource[] outputs, byte outputCount)
+    {
+        var sum = (int)outputs[0].Read();
+        if (outputCount > 1)
+        {
+            sum += outputs[1].Read();
+            if (outputCount > 2)
+            {
+                sum += outputs[2].Read();
+                if (outputCount > 3)
+                {
+                    sum += outputs[3].Read();
+                }
+            }
+        }
+
+        return sum;
+    }
+
+    private void RebuildMixLists()
+    {
+        byte leftCount = 0;
+        byte rightCount = 0;
+        foreach (var channel in Channels)
+        {
+            if (channel.OutputCount == 0)
+            {
+                continue;
+            }
+
+#if OPL_ENABLE_STEREOEXT
+            if ((channel.LeftPan | channel.Chc) != 0)
+#else
+            if ((channel.Cha | channel.Chc) != 0)
+#endif
+            {
+                LeftMixChannels[leftCount++] = channel;
+            }
+
+#if OPL_ENABLE_STEREOEXT
+            if ((channel.RightPan | channel.Chd) != 0)
+#else
+            if ((channel.Chb | channel.Chd) != 0)
+#endif
+            {
+                RightMixChannels[rightCount++] = channel;
+            }
+        }
+
+        LeftMixChannelCount = leftCount;
+        RightMixChannelCount = rightCount;
+        MixListsDirty = false;
+    }
+
+    private void MixRight()
+    {
+        var front = 0;
+        var rear = 0;
+        for (var index = 0; index < RightMixChannelCount; index++)
+        {
+            var channel = RightMixChannels[index];
+            var channelSample = SumChannelOutputs(channel.RightOutputs, channel.OutputCount);
+#if OPL_ENABLE_STEREOEXT
+            front = unchecked(front + (short)(((long)(short)channelSample * channel.RightPan) >> 16));
+#else
+            front = unchecked(front + (short)(channelSample & channel.Chb));
+#endif
+            rear = unchecked(rear + (short)(channelSample & channel.Chd));
+        }
+
+        MixBuffer[1] = front;
+        MixBuffer[3] = rear;
     }
 
     /* Original C: void OPL3_Generate4Ch(opl3_chip *chip, int16_t *buf4) */
@@ -649,79 +921,44 @@ public sealed partial class Opl3Chip
         buffer[1] = ClipSample(MixBuffer[1]);
         buffer[3] = ClipSample(MixBuffer[3]);
 
-#if !OPL_ENABLE_STEREOEXT
-        for (var ii = 0; ii < 15; ii++)
+        if (MixListsDirty)
         {
-            ProcessSlot(Slots[ii]);
+            RebuildMixLists();
         }
-#else
-        Opl3Operator[] localSlots = Slots;
-        for (int ii = 0; ii < localSlots.Length; ii++) {
-            ProcessSlot(localSlots[ii]);
+
+        AdvanceNoise();
+
+        var writeGeneration = WriteGeneration;
+        for (var channelIndex = 0; channelIndex < 7; channelIndex++)
+        {
+            ProcessChannelSlots(Channels[channelIndex], false, writeGeneration);
         }
-#endif
+
+        ProcessChannelSlots(Channels[7], true, writeGeneration);
+        ProcessChannelSlots(Channels[8], true, writeGeneration);
+        for (var channelIndex = 9; channelIndex < Channels.Length; channelIndex++)
+        {
+            ProcessChannelSlots(Channels[channelIndex], false, writeGeneration);
+        }
 
         var mix0 = 0;
         var mix1 = 0;
-        foreach (var channel in Channels)
+        for (var index = 0; index < LeftMixChannelCount; index++)
         {
-            var accm = SumChannelOutputs(channel);
+            var channel = LeftMixChannels[index];
+            var channelSample = SumChannelOutputs(channel.LeftOutputs, channel.OutputCount);
 #if OPL_ENABLE_STEREOEXT
-            int panLeft = (int)(((long)accm * channel.LeftPan) >> 16);
-            mix0 = unchecked(mix0 + (short)panLeft);
+            mix0 = unchecked(mix0 + (short)(((long)(short)channelSample * channel.LeftPan) >> 16));
 #else
-            mix0 = unchecked(mix0 + (short)(accm & channel.Cha));
+            mix0 = unchecked(mix0 + (short)(channelSample & channel.Cha));
 #endif
-
-            int maskChc = channel.Chc;
-            mix1 = unchecked(mix1 + (short)(accm & maskChc));
+            mix1 = unchecked(mix1 + (short)(channelSample & channel.Chc));
         }
 
         MixBuffer[0] = mix0;
         MixBuffer[2] = mix1;
-
-#if !OPL_ENABLE_STEREOEXT
-        for (var ii = 15; ii < 18; ii++)
-        {
-            ProcessSlot(Slots[ii]);
-        }
-#endif
-
         buffer[0] = ClipSample(MixBuffer[0]);
         buffer[2] = ClipSample(MixBuffer[2]);
-
-#if !OPL_ENABLE_STEREOEXT
-        for (var ii = 18; ii < 33; ii++)
-        {
-            ProcessSlot(Slots[ii]);
-        }
-#endif
-
-        mix0 = 0;
-        mix1 = 0;
-        foreach (var channel in Channels)
-        {
-            var accm = SumChannelOutputs(channel);
-
-#if OPL_ENABLE_STEREOEXT
-            int panRight = (int)(((long)accm * channel.RightPan) >> 16);
-            mix0 = unchecked(mix0 + (short)panRight);
-#else
-            mix0 = unchecked(mix0 + (short)(accm & channel.Chb));
-#endif
-
-            int maskChd = channel.Chd;
-            mix1 = unchecked(mix1 + (short)(accm & maskChd));
-        }
-
-        MixBuffer[1] = mix0;
-        MixBuffer[3] = mix1;
-#if !OPL_ENABLE_STEREOEXT
-        for (var ii = 33; ii < Slots.Length; ii++)
-        {
-            ProcessSlot(Slots[ii]);
-        }
-#endif
 
         Opl3Lfo.Advance(this);
 
@@ -729,18 +966,22 @@ public sealed partial class Opl3Chip
 
         if (EgState != 0)
         {
-            byte shift = 0;
-            while (shift < 13 && ((EgTimer >> shift) & 1) == 0)
-            {
-                shift++;
-            }
-
-            if (shift > 12)
+            var envelopeTimerLow = (uint)EgTimer & 0x1fffu;
+            if (envelopeTimerLow == 0)
             {
                 EgAdd = 0;
             }
             else
             {
+#if NETSTANDARD2_1
+                byte shift = 0;
+                while (((envelopeTimerLow >> shift) & 1) == 0)
+                {
+                    shift++;
+                }
+#else
+                var shift = BitOperations.TrailingZeroCount(envelopeTimerLow);
+#endif
                 EgAdd = (byte)(shift + 1);
             }
 
@@ -762,6 +1003,8 @@ public sealed partial class Opl3Chip
         }
 
         EgState ^= 1;
+
+        MixRight();
 
         while (true)
         {
@@ -888,7 +1131,14 @@ public sealed partial class Opl3Chip
         Nts = 0;
         Rhythm = 0;
         Opl3Lfo.Reset(this);
+        TremoloDirty = false;
         Noise = 1;
+        NoiseHihat = 0;
+        NoiseSnare = 0;
+        WriteGeneration = 1;
+        LeftMixChannelCount = 0;
+        RightMixChannelCount = 0;
+        MixListsDirty = true;
         ZeroMod = 0;
         Array.Clear(MixBuffer, 0, MixBuffer.Length);
         RhythmHihatBit2 = 0;
@@ -936,6 +1186,11 @@ public sealed partial class Opl3Chip
             slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Release;
             slot.EffectiveEnvelopeRateIndex = 0;
             slot.EffectiveKeyScaleLevel = 0;
+            slot.CachedEnvelopeAttenuation = 0;
+            slot.CachedEnvelopeKeyScale = 0;
+            Array.Clear(slot.EnvelopeRates, 0, slot.EnvelopeRates.Length);
+            Array.Clear(slot.EnvelopeRateHigh, 0, slot.EnvelopeRateHigh.Length);
+            Array.Clear(slot.EnvelopeRateLow, 0, slot.EnvelopeRateLow.Length);
             slot.TremoloEnabled = false;
             slot.RegVibrato = 0;
             slot.RegOperatorType = 0;
@@ -951,8 +1206,11 @@ public sealed partial class Opl3Chip
             slot.RegKeyState = 0;
             slot.RegPhaseResetRequest = 0;
             slot.RegPhaseGeneratorAccumulator = 0;
+            slot.PhaseIncrement = 0;
+            Array.Clear(slot.VibratoPhaseIncrements, 0, slot.VibratoPhaseIncrements.Length);
             slot.PhaseGeneratorOutput = 0;
             slot.SlotIndex = (byte)slotIndex;
+            slot.DormantGeneration = 0;
         }
 
         for (var channelIndex = 0; channelIndex < Channels.Length; channelIndex++)
@@ -980,6 +1238,15 @@ public sealed partial class Opl3Chip
             channel.Out[1] = ShortSignalSource.Zero;
             channel.Out[2] = ShortSignalSource.Zero;
             channel.Out[3] = ShortSignalSource.Zero;
+            channel.LeftOutputs[0] = ShortSignalSource.Zero;
+            channel.LeftOutputs[1] = ShortSignalSource.Zero;
+            channel.LeftOutputs[2] = ShortSignalSource.Zero;
+            channel.LeftOutputs[3] = ShortSignalSource.Zero;
+            channel.RightOutputs[0] = ShortSignalSource.Zero;
+            channel.RightOutputs[1] = ShortSignalSource.Zero;
+            channel.RightOutputs[2] = ShortSignalSource.Zero;
+            channel.RightOutputs[3] = ShortSignalSource.Zero;
+            channel.OutputCount = 0;
             channel.ChannelType = ChannelType.TwoOp;
             channel.FNumber = 0;
             channel.Block = 0;
@@ -1003,6 +1270,17 @@ public sealed partial class Opl3Chip
     /* Original C: void OPL3_WriteReg(opl3_chip *chip, uint16_t reg, uint8_t v) */
     private void WriteRegisterInternal(ushort register, byte value)
     {
+        WriteGeneration = unchecked(WriteGeneration + 1);
+        if (WriteGeneration == 0)
+        {
+            foreach (var slot in Slots)
+            {
+                slot.DormantGeneration = 0;
+            }
+
+            WriteGeneration = 1;
+        }
+
         var high = (byte)((register >> 8) & 0x01);
         var regm = (byte)(register & 0xff);
 
@@ -1108,7 +1386,14 @@ public sealed partial class Opl3Chip
             case 0xb0:
                 if (regm == 0xbd && high == 0)
                 {
-                    Opl3Lfo.ConfigureDepth(this, value);
+                    if (Opl3Lfo.ConfigureDepth(this, value))
+                    {
+                        foreach (var slot in Slots)
+                        {
+                            UpdatePhaseIncrement(slot);
+                        }
+                    }
+
                     ChannelUpdateRhythm(this, value);
                 }
                 else if ((regm & 0x0f) < 9)
