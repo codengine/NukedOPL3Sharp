@@ -58,68 +58,65 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         _playback = new PlaybackService();
         PatchBankText = $"Patch bank: {_playback.PatchBankDisplayName}";
-        _playback.StatusChanged += (_, s) =>
-            Dispatcher.UIThread.Post(() => StatusText = s);
+        _playback.StatusChanged += (_, s) => Dispatcher.UIThread.Post(() => StatusText = s);
 
-        _playback.TrackChanged += (_, info) =>
-            Dispatcher.UIThread.Post(() =>
-            {
-                NowPlayingText = info is null ? "No track loaded." : $"Now playing: {info.DisplayName}";
-                SeekMaximumSeconds = info?.Duration.TotalSeconds ?? 0;
-                CanSeek = info is not null;
-                OnPropertyChanged(nameof(TimeText));
-            });
+        _playback.TrackChanged += (_, info) => Dispatcher.UIThread.Post(() =>
+        {
+            NowPlayingText = info is null ? "No track loaded." : $"Now playing: {info.DisplayName}";
+            SeekMaximumSeconds = info?.Duration.TotalSeconds ?? 0;
+            CanSeek = info is not null;
+            OnPropertyChanged(nameof(TimeText));
+        });
 
-        _playback.StateChanged += (_, st) =>
-            Dispatcher.UIThread.Post(() =>
-            {
-                CanPlay = st is PlaybackState.Stopped or PlaybackState.Paused;
-                CanPause = st is PlaybackState.Playing;
-                CanStop = st is PlaybackState.Playing or PlaybackState.Paused;
-            });
+        _playback.StateChanged += (_, st) => Dispatcher.UIThread.Post(() =>
+        {
+            CanPlay = st is PlaybackState.Stopped or PlaybackState.Paused;
+            CanPause = st is PlaybackState.Playing;
+            CanStop = st is PlaybackState.Playing or PlaybackState.Paused;
+        });
 
         _playback.PatchBankChanged += (_, name) =>
             Dispatcher.UIThread.Post(() => PatchBankText = $"Patch bank: {name}");
 
-        _playback.SeekCompleted += (_, pos) =>
-            Dispatcher.UIThread.Post(() =>
-            {
-                _seekPending = false;
-                _suppressSeekChanged = true;
-                try
-                {
-                    SeekPositionSeconds = Math.Clamp(pos.TotalSeconds, 0, SeekMaximumSeconds);
-                }
-                finally
-                {
-                    _suppressSeekChanged = false;
-                }
-
-                OnPropertyChanged(nameof(TimeText));
-            });
-
-        _uiTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(200), DispatcherPriority.Background, (_, _) =>
+        _playback.SeekCompleted += (_, pos) => Dispatcher.UIThread.Post(() =>
         {
-            var pos = _playback.GetPosition();
-            if (!_seekPending &&
-                pos.TotalSeconds >= 0 && pos.TotalSeconds <= SeekMaximumSeconds &&
-                _playback.IsPlayingOrPaused)
+            _seekPending = false;
+            _suppressSeekChanged = true;
+            try
             {
-                _suppressSeekChanged = true;
-                try
-                {
-                    SeekPositionSeconds = pos.TotalSeconds;
-                }
-                finally
-                {
-                    _suppressSeekChanged = false;
-                }
-
-                OnPropertyChanged(nameof(TimeText));
+                SeekPositionSeconds = Math.Clamp(pos.TotalSeconds, 0, SeekMaximumSeconds);
+            }
+            finally
+            {
+                _suppressSeekChanged = false;
             }
 
-            OnPropertyChanged(nameof(VolumeText));
+            OnPropertyChanged(nameof(TimeText));
         });
+
+        _uiTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(200),
+            DispatcherPriority.Background,
+            (_, _) =>
+            {
+                var pos = _playback.GetPosition();
+                if (!_seekPending && pos.TotalSeconds >= 0 && pos.TotalSeconds <= SeekMaximumSeconds &&
+                    _playback.IsPlayingOrPaused)
+                {
+                    _suppressSeekChanged = true;
+                    try
+                    {
+                        SeekPositionSeconds = pos.TotalSeconds;
+                    }
+                    finally
+                    {
+                        _suppressSeekChanged = false;
+                    }
+
+                    OnPropertyChanged(nameof(TimeText));
+                }
+
+                OnPropertyChanged(nameof(VolumeText));
+            });
         _uiTimer.Start();
 
         CanPlay = true;
@@ -250,21 +247,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         var target = TimeSpan.FromSeconds(Math.Clamp(value, 0, SeekMaximumSeconds));
         _ = Task.Run(async () =>
-        {
-            try
             {
-                await Task.Delay(150, token);
-                if (token.IsCancellationRequested)
+                try
                 {
-                    return;
-                }
+                    await Task.Delay(150, token);
+                    if (token.IsCancellationRequested)
+                    {
+                        return;
+                    }
 
-                _playback.Seek(target);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }, token);
+                    _playback.Seek(target);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            },
+            token);
 
         OnPropertyChanged(nameof(TimeText));
     }
@@ -342,12 +340,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             drums |= 1 << 0;
         }
 
-        var state = new Opl3ControlState(
-            OplTremoloDepth,
-            OplVibratoDepth,
-            OplRhythmMode,
-            drums,
-            OplNoteSelect);
+        var state = new Opl3ControlState(OplTremoloDepth, OplVibratoDepth, OplRhythmMode, drums, OplNoteSelect);
 
         _playback.SetOpl3Controls(state);
     }

@@ -441,9 +441,7 @@ public sealed class OplMidiSynth : IMidiSink
         channel &= 15;
         foreach (var voice in _voices)
         {
-            if (voice.On &&
-                voice.JustChanged == justChanged &&
-                voice.Channel == _channels[channel] &&
+            if (voice.On && voice.JustChanged == justChanged && voice.Channel == _channels[channel] &&
                 voice.Note == note)
             {
                 return voice;

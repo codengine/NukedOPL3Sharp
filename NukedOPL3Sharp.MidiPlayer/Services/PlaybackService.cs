@@ -94,7 +94,9 @@ public sealed class PlaybackService : IDisposable
         }
     }
 
-    private static MidiPlaybackEngine CreateEngine(string path, string displayName, Dictionary<ushort, OplPatch> patches,
+    private static MidiPlaybackEngine CreateEngine(string path,
+        string displayName,
+        Dictionary<ushort, OplPatch> patches,
         int sampleRate)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
@@ -103,8 +105,10 @@ public sealed class PlaybackService : IDisposable
         {
             ".mid" or ".midi" => new MidiPlaybackEngine(path, displayName, patches, sampleRate),
             _ when name.Contains(".mid", StringComparison.OrdinalIgnoreCase) ||
-                   name.Contains(".midi", StringComparison.OrdinalIgnoreCase)
-                => new MidiPlaybackEngine(path, displayName, patches, sampleRate),
+                   name.Contains(".midi", StringComparison.OrdinalIgnoreCase) => new MidiPlaybackEngine(path,
+                displayName,
+                patches,
+                sampleRate),
             _ => throw new NotSupportedException("Unsupported music file type (expected .mid, .midi).")
         };
     }

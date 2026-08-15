@@ -81,7 +81,8 @@ public sealed class MidiFile
         return new MidiFile(format, nTracks, division, merged);
     }
 
-    private static void ParseTrack(ReadOnlySpan<byte> trackData, ref int order,
+    private static void ParseTrack(ReadOnlySpan<byte> trackData,
+        ref int order,
         List<(long Tick, int Order, MidiEvent Ev)> output)
     {
         var r = new MidiReader(trackData);
@@ -152,8 +153,7 @@ public sealed class MidiFile
                 {
                     var note = r.ReadByte();
                     var vel = r.ReadByte();
-                    output.Add((tick, order++,
-                        new MidiEvent(0, MidiEventKind.NoteOff, channel, note, vel, [])));
+                    output.Add((tick, order++, new MidiEvent(0, MidiEventKind.NoteOff, channel, note, vel, [])));
                     break;
                 }
                 case 0x9:
@@ -172,15 +172,13 @@ public sealed class MidiFile
                 {
                     var cc = r.ReadByte();
                     var val = r.ReadByte();
-                    output.Add((tick, order++,
-                        new MidiEvent(0, MidiEventKind.ControlChange, channel, cc, val, [])));
+                    output.Add((tick, order++, new MidiEvent(0, MidiEventKind.ControlChange, channel, cc, val, [])));
                     break;
                 }
                 case 0xC:
                 {
                     var program = r.ReadByte();
-                    output.Add((tick, order++,
-                        new MidiEvent(0, MidiEventKind.ProgramChange, channel, program, 0, [])));
+                    output.Add((tick, order++, new MidiEvent(0, MidiEventKind.ProgramChange, channel, program, 0, [])));
                     break;
                 }
                 case 0xD:
@@ -190,8 +188,7 @@ public sealed class MidiFile
                 {
                     var lsb = r.ReadByte();
                     var msb = r.ReadByte();
-                    output.Add((tick, order++,
-                        new MidiEvent(0, MidiEventKind.PitchBend, channel, lsb, msb, [])));
+                    output.Add((tick, order++, new MidiEvent(0, MidiEventKind.PitchBend, channel, lsb, msb, [])));
                     break;
                 }
                 default:

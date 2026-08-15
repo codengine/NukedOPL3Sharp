@@ -9,12 +9,14 @@ namespace NukedOPL3Sharp.Benchmarks;
 public class Opl3Benchmarks
 {
     private const int FramesPerInvoke = 4_096;
+
     private static readonly byte[] SlotOffsets =
     [
         0, 1, 2, 3, 4, 5,
         8, 9, 10, 11, 12, 13,
         16, 17, 18, 19, 20, 21
     ];
+
     private static readonly RegisterWrite[] BroadWriteStream = BuildBroadWriteStream();
 
     private readonly short[] _buffer = new short[4];

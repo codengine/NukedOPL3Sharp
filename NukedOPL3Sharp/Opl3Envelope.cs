@@ -17,17 +17,16 @@ internal static class Opl3Envelope
     internal static void UpdateKeyScaleLevel(Opl3Operator slot)
     {
         var channel = slot.Channel ?? throw new InvalidOperationException("Channel not assigned.");
-        var value = (short)((Opl3Tables.ReadKeyScaleLevel(channel.FNumber >> 6) << 2)
-                            - ((0x08 - channel.Block) << 5));
+        var value = (short)((Opl3Tables.ReadKeyScaleLevel(channel.FNumber >> 6) << 2) - ((0x08 - channel.Block) << 5));
         if (value < 0)
         {
             value = 0;
         }
 
         slot.EffectiveKeyScaleLevel = (byte)value;
-        slot.CachedEnvelopeAttenuation = (ushort)((slot.RegTotalLevel << 2)
-                                                   + (slot.EffectiveKeyScaleLevel >>
-                                                      Opl3Tables.ReadKeyScaleShift(slot.RegKeyScaleLevel)));
+        slot.CachedEnvelopeAttenuation = (ushort)((slot.RegTotalLevel << 2) +
+                                                  (slot.EffectiveKeyScaleLevel >>
+                                                   Opl3Tables.ReadKeyScaleShift(slot.RegKeyScaleLevel)));
     }
 
     /// <summary>
@@ -87,8 +86,8 @@ internal static class Opl3Envelope
         var rateLow = slot.EnvelopeRateLow[rateStage];
         byte shift = 0;
 
-        slot.EnvelopeGeneratorLevel = (ushort)(slot.EnvelopeGeneratorOutput + slot.CachedEnvelopeAttenuation
-                                                + (slot.TremoloEnabled ? chip.Tremolo : 0));
+        slot.EnvelopeGeneratorLevel = (ushort)(slot.EnvelopeGeneratorOutput + slot.CachedEnvelopeAttenuation +
+                                               (slot.TremoloEnabled ? chip.Tremolo : 0));
         slot.RegPhaseResetRequest = reset ? 1u : 0u;
 
         if (registerRate != 0)

@@ -8,10 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+        <PackageReference Include="BenchmarkDotNet" Version="0.15.8"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NukedOPL3Sharp\NukedOPL3Sharp.csproj" />
+        <ProjectReference Include="..\NukedOPL3Sharp\NukedOPL3Sharp.csproj"/>
     </ItemGroup>
 </Project>

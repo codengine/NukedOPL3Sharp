@@ -3,17 +3,20 @@
 A C# port of **nukeykt**’s Nuked-OPL3 FM synth core, plus a small MIDI player application that demonstrates how to drive
 the chip from a Standard MIDI (.mid) file.
 
+The output hash from Nuked-OPL3 was generated for several scenarios and embedded in tests to guarantee parity - it is
+bit by bit identical.
+
 ## Projects
 
 - `NukedOPL3Sharp` (chip/core library)
-  - Implements the OPL3 chip as a register-driven synthesizer.
-  - Main entry point: `NukedOPL3Sharp.Opl3Chip` (`Reset`, `WriteRegister`, `GenerateStream`, etc.).
+    - Implements the OPL3 chip as a register-driven synthesizer.
+    - Main entry point: `NukedOPL3Sharp.Opl3Chip` (`Reset`, `WriteRegister`, `GenerateStream`, etc.).
 - `NukedOPL3Sharp.MidiPlayer` (demo application)
-  - Loads `.mid` / `.midi` files.
-  - Loads instrument banks in `.op2` and `.wopl` formats (user-selected; not bundled/autoloaded).
-  - Renders audio by translating MIDI events into OPL3 register writes and then pulling PCM from `Opl3Chip`.
+    - Loads `.mid` / `.midi` files.
+    - Loads instrument banks in `.op2` and `.wopl` formats (user-selected; not bundled/autoloaded).
+    - Renders audio by translating MIDI events into OPL3 register writes and then pulling PCM from `Opl3Chip`.
 - `NukedOPL3Sharp.Benchmarks` (BenchmarkDotNet suite)
-  - Separately measures dormant, 2-op, 4-op, rhythm, and dynamic buffered/resampled paths in nanoseconds per frame.
+    - Separately measures dormant, 2-op, 4-op, rhythm, and dynamic buffered/resampled paths in nanoseconds per frame.
 
 ## Benchmarks
 

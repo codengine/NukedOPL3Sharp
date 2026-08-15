@@ -7,13 +7,7 @@ public readonly record struct Opl3ControlState(
     byte DrumMask,
     bool NoteSelect)
 {
-    public static Opl3ControlState Default =>
-        new(
-            false,
-            false,
-            false,
-            0,
-            false);
+    public static Opl3ControlState Default => new(false, false, false, 0, false);
 
     public Opl3ControlState WithDrumMask(byte drumMask)
     {
