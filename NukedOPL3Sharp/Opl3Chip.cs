@@ -11,8 +11,54 @@ public sealed partial class Opl3Chip
 {
     public const int WriteBufferSize = 1024;
     public const int WriteBufferDelay = 2;
+    private const uint AllChannelsMask = (1u << 18) - 1;
     private const int ResampleFractionBits = 10;
 
+#if NET10_0_OR_GREATER
+    private const byte LeftMixEnabled = 1;
+    private const byte RightMixEnabled = 2;
+    private const byte SharedMixOutputs = 4;
+    private const byte AllMixOutputsEnabled = 8;
+
+    private struct MixEntry
+    {
+        /// <summary>Reads the first left-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource LeftOutput0;
+
+        /// <summary>Reads the second left-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource LeftOutput1;
+
+        /// <summary>Reads the third left-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource LeftOutput2;
+
+        /// <summary>Reads the fourth left-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource LeftOutput3;
+
+        /// <summary>Reads the first right-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource RightOutput0;
+
+        /// <summary>Reads the second right-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource RightOutput1;
+
+        /// <summary>Reads the third right-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource RightOutput2;
+
+        /// <summary>Reads the fourth right-delayed output selected by the channel algorithm.</summary>
+        public ShortSignalSource RightOutput3;
+
+        /// <summary>Provides the current routing masks or stereo-extension pans.</summary>
+        public Opl3Channel Channel;
+
+        /// <summary>Limits summation to outputs selected by the channel algorithm.</summary>
+        public byte OutputCount;
+
+        /// <summary>Selects enabled buses and whether their delayed signal views match.</summary>
+        public byte Routes;
+    }
+
+    private readonly MixEntry[] _mixEntries = new MixEntry[18];
+    private byte _mixEntryCount;
+#else
     /// <summary>
     ///     Holds channels that can contribute to the next left-side mix.
     /// </summary>
@@ -24,14 +70,15 @@ public sealed partial class Opl3Chip
     internal Opl3Channel[] RightMixChannels { get; } = new Opl3Channel[18];
 
     /// <summary>
-    ///     Counts valid entries in <see cref="LeftMixChannels"/>.
+    ///     Counts valid entries in the left-side mix plan.
     /// </summary>
     internal byte LeftMixChannelCount;
 
     /// <summary>
-    ///     Counts valid entries in <see cref="RightMixChannels"/>.
+    ///     Counts valid entries in the right-side mix plan.
     /// </summary>
     internal byte RightMixChannelCount;
+#endif
 
     /// <summary>
     ///     Requests a mix-list rebuild after routing or algorithm state changes.
@@ -42,6 +89,11 @@ public sealed partial class Opl3Chip
     ///     Invalidates dormant operators whenever a register write occurs.
     /// </summary>
     internal uint WriteGeneration;
+
+    /// <summary>
+    ///     Marks channels whose operators can still change before the next register write.
+    /// </summary>
+    internal uint ActiveChannelMask;
 
     /// <summary>
     ///     Holds the noise bit observed by the hi-hat operator during the current sample.
@@ -57,6 +109,18 @@ public sealed partial class Opl3Chip
     ///     Requests a tremolo refresh after its depth changes between timer steps.
     /// </summary>
     internal bool TremoloDirty;
+
+    /// <summary>
+    ///     Tracks which global vibrato position is reflected by each operator's selected phase increment.
+    /// </summary>
+    internal byte CachedVibratoPosition;
+
+#if NET10_0_OR_GREATER
+    /// <summary>
+    ///     Selects the envelope-shift table row for the current global envelope clock.
+    /// </summary>
+    internal int EnvelopeShiftTableOffset;
+#endif
 
     public Opl3Channel[] Channels { get; } = new Opl3Channel[18];
     public Opl3Operator[] Slots { get; } = new Opl3Operator[36];

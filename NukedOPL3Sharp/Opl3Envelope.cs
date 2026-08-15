@@ -47,8 +47,14 @@ internal static class Opl3Envelope
                 rateHigh = 0x0f;
             }
 
+#if NET10_0_OR_GREATER
+            slot.ResolvedEnvelopeRates[stage] = slot.EnvelopeRates[stage] == 0
+                ? (byte)0
+                : (byte)(1 + (rateHigh << 2) + (rate & 0x03));
+#else
             slot.EnvelopeRateHigh[stage] = rateHigh;
             slot.EnvelopeRateLow[stage] = (byte)(rate & 0x03);
+#endif
         }
     }
 
@@ -61,6 +67,21 @@ internal static class Opl3Envelope
         var stage = slot.EnvelopeGeneratorState;
         var reset = slot.RegKeyState != 0 && stage == (byte)EnvelopeGeneratorStage.Release;
         var rateStage = reset ? (byte)EnvelopeGeneratorStage.Attack : stage;
+#if NET10_0_OR_GREATER
+        var resolvedRate = slot.ResolvedEnvelopeRates[rateStage];
+
+        slot.EnvelopeGeneratorLevel = (ushort)(slot.EnvelopeGeneratorOutput + slot.CachedEnvelopeAttenuation
+                                                + (slot.TremoloEnabled ? chip.Tremolo : 0));
+
+        var shift = Opl3Tables.ReadEnvelopeShift(chip.EnvelopeShiftTableOffset + resolvedRate);
+        var transitionIndex = slot.EnvelopeGeneratorOutput | (stage << 9)
+                              | (slot.RegKeyState != 0 ? 1 << 11 : 0) | (shift << 12)
+                              | (resolvedRate >= 61 ? 1 << 14 : 0) | (slot.RegSustainLevel << 15);
+        var transition = Opl3Tables.ReadEnvelopeTransition(transitionIndex);
+        slot.EnvelopeGeneratorOutput = (ushort)(transition & 0x1ff);
+        slot.EnvelopeGeneratorState = (byte)((transition >> 9) & 0x03);
+        slot.RegPhaseResetRequest = (uint)((transition >> 11) & 0x01);
+#else
         var registerRate = slot.EnvelopeRates[rateStage];
         var rateHigh = slot.EnvelopeRateHigh[rateStage];
         var rateLow = slot.EnvelopeRateLow[rateStage];
@@ -160,6 +181,7 @@ internal static class Opl3Envelope
         {
             slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Release;
         }
+#endif
     }
 
     /// <summary>
@@ -185,6 +207,16 @@ internal static class Opl3Envelope
     internal static short GenerateWaveform(Opl3Operator slot)
     {
         var phase = unchecked((ushort)(slot.PhaseGeneratorOutput + (ushort)slot.ModulationSource.Read()));
+#if NET10_0_OR_GREATER
+        var envelope = slot.EnvelopeGeneratorLevel;
+        if (envelope >= 384)
+        {
+            var waveform = Opl3Tables.ReadWaveform(slot.RegWaveformSelect, phase & 0x3ff);
+            return (short)((short)waveform >> 15);
+        }
+
+        return Opl3Tables.ReadLinearWaveform(envelope, slot.RegWaveformSelect, phase & 0x3ff);
+#else
         var waveform = Opl3Tables.ReadWaveform(slot.RegWaveformSelect, phase & 0x3ff);
         var negativeMask = (ushort)((short)waveform >> 15);
         var level = (uint)((waveform & 0x7fff) + (slot.EnvelopeGeneratorLevel << 3));
@@ -195,6 +227,7 @@ internal static class Opl3Envelope
 
         var sample = (ushort)(Opl3Tables.ReadExp((int)(level & 0xff)) >> (int)(level >> 8));
         return unchecked((short)(sample ^ negativeMask));
+#endif
     }
 
     /// <summary>

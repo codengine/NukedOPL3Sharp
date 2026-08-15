@@ -48,10 +48,22 @@ public sealed class Opl3ParityTests
         Assert.Equal("e5168aaab696c0c30bdd1ecf44ec0de2e248b1bfeb5dc8110b8b3dfae67eb3e6", HashSamples(chip, 8_192));
     }
 
-    private static Opl3Chip ConfigureWaveform(byte waveform)
+    /// <summary>
+    ///     Preserves signed interpolation and resampling cadence at a non-native output rate.
+    /// </summary>
+    [Fact]
+    public void Generate4ChannelsResampled_MatchesReferenceInterpolation()
+    {
+        var chip = ConfigureWaveform(0, 48_000);
+
+        Assert.Equal("7e6e0b5d7d3cf338134345c73ac876b1bafbd0b6c0914865272fe35e5fa6083b",
+            HashResampledSamples(chip, 8_192));
+    }
+
+    private static Opl3Chip ConfigureWaveform(byte waveform, uint sampleRate = 49_716)
     {
         var chip = new Opl3Chip();
-        chip.Reset(49_716);
+        chip.Reset(sampleRate);
         chip.WriteRegister(0x105, 0x01);
         chip.WriteRegister(0x020, 0x01);
         chip.WriteRegister(0x023, 0x01);
@@ -104,12 +116,30 @@ public sealed class Opl3ParityTests
 
     private static string HashSamples(Opl3Chip chip, int frameCount)
     {
+        return HashSamples(chip, frameCount, false);
+    }
+
+    private static string HashResampledSamples(Opl3Chip chip, int frameCount)
+    {
+        return HashSamples(chip, frameCount, true);
+    }
+
+    private static string HashSamples(Opl3Chip chip, int frameCount, bool resampled)
+    {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         Span<short> samples = stackalloc short[4];
         Span<byte> frame = stackalloc byte[8];
         for (var frameIndex = 0; frameIndex < frameCount; frameIndex++)
         {
-            chip.Generate4Channels(samples);
+            if (resampled)
+            {
+                chip.Generate4ChannelsResampled(samples);
+            }
+            else
+            {
+                chip.Generate4Channels(samples);
+            }
+
             for (var channel = 0; channel < samples.Length; channel++)
             {
                 BinaryPrimitives.WriteInt16LittleEndian(frame.Slice(channel * 2, 2), samples[channel]);

@@ -56,6 +56,12 @@ public sealed class Opl3Operator
     /// </summary>
     internal byte[] EnvelopeRates { get; } = new byte[4];
 
+#if NET10_0_OR_GREATER
+    /// <summary>
+    ///     Selects the table row for each resolved envelope-stage rate; zero preserves a disabled register rate.
+    /// </summary>
+    internal byte[] ResolvedEnvelopeRates { get; } = new byte[4];
+#else
     /// <summary>
     ///     Holds the high part of each resolved envelope-stage rate.
     /// </summary>
@@ -65,11 +71,17 @@ public sealed class Opl3Operator
     ///     Holds the low part of each resolved envelope-stage rate.
     /// </summary>
     internal byte[] EnvelopeRateLow { get; } = new byte[4];
+#endif
 
     /// <summary>
     ///     Holds the phase increment used while vibrato is disabled.
     /// </summary>
     internal uint PhaseIncrement;
+
+    /// <summary>
+    ///     Holds the phase increment selected by the chip's current vibrato position.
+    /// </summary>
+    internal uint CurrentVibratoPhaseIncrement;
 
     /// <summary>
     ///     Holds the phase increment for each global vibrato position.

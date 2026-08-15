@@ -21,12 +21,31 @@ public readonly struct ShortSignalSource
     }
 
     private readonly Opl3Operator? _source;
+#if NET8_0_OR_GREATER
+    private readonly nint _fieldOffset;
+#else
     private readonly SourceKind _kind;
+#endif
 
     private ShortSignalSource(Opl3Operator? source, SourceKind kind)
     {
         _source = source;
+#if NET8_0_OR_GREATER
+        if (source is null)
+        {
+            _fieldOffset = 0;
+            return;
+        }
+
+        _fieldOffset = kind switch
+        {
+            SourceKind.Feedback => Unsafe.ByteOffset(ref source.Out, ref source.FeedbackModifiedSignal),
+            SourceKind.PreviousOutput => Unsafe.ByteOffset(ref source.Out, ref source.PreviousOutputSample),
+            _ => 0
+        };
+#else
         _kind = kind;
+#endif
     }
 
     /// <summary>
@@ -37,9 +56,17 @@ public readonly struct ShortSignalSource
     /// <summary>
     ///     Reads the currently selected signal without allocating a delegate.
     /// </summary>
+#if NET8_0_OR_GREATER
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+#else
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
     public short Read()
     {
+#if NET8_0_OR_GREATER
+        var source = _source;
+        return source is null ? (short)0 : Unsafe.AddByteOffset(ref source.Out, _fieldOffset);
+#else
         return _kind switch
         {
             SourceKind.Output => _source!.Out,
@@ -47,7 +74,18 @@ public readonly struct ShortSignalSource
             SourceKind.PreviousOutput => _source!.PreviousOutputSample,
             _ => 0
         };
+#endif
     }
+
+#if NET10_0_OR_GREATER
+    /// <summary>
+    ///     Confirms that two delayed mixer views read the same operator field.
+    /// </summary>
+    internal bool ReadsSameSignalAs(ShortSignalSource other)
+    {
+        return ReferenceEquals(_source, other._source) && _fieldOffset == other._fieldOffset;
+    }
+#endif
 
     /// <summary>
     ///     Redirects outputs at or beyond the delay boundary to the operator's previous sample.
@@ -55,7 +93,11 @@ public readonly struct ShortSignalSource
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ShortSignalSource DelayOutputFrom(byte firstDelayedSlot)
     {
+#if NET8_0_OR_GREATER
+        return _source is { } source && _fieldOffset == 0 && source.SlotIndex >= firstDelayedSlot
+#else
         return _kind == SourceKind.Output && _source!.SlotIndex >= firstDelayedSlot
+#endif
             ? new ShortSignalSource(_source, SourceKind.PreviousOutput)
             : this;
     }
@@ -66,6 +108,21 @@ public readonly struct ShortSignalSource
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool CanRemainZero(Opl3Operator owner, uint writeGeneration)
     {
+#if NET8_0_OR_GREATER
+        var source = _source;
+        if (source is null)
+        {
+            return true;
+        }
+
+        if (_fieldOffset == 0)
+        {
+            return source.DormantGeneration == writeGeneration;
+        }
+
+        return ReferenceEquals(source, owner)
+               && _fieldOffset == Unsafe.ByteOffset(ref source.Out, ref source.FeedbackModifiedSignal);
+#else
         return _kind switch
         {
             SourceKind.Zero => true,
@@ -73,6 +130,7 @@ public readonly struct ShortSignalSource
             SourceKind.Output => _source!.DormantGeneration == writeGeneration,
             _ => false
         };
+#endif
     }
 
     /// <summary>

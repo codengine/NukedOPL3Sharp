@@ -33,6 +33,10 @@
 // SPDX-FileCopyrightText: 2026 Tony Gies
 // SPDX-License-Identifier: LGPL-2.1-only
 using System.Runtime.CompilerServices;
+#if NET8_0_OR_GREATER
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+#endif
 
 namespace NukedOPL3Sharp;
 
@@ -41,6 +45,12 @@ namespace NukedOPL3Sharp;
 /// </summary>
 internal static class Opl3Tables
 {
+    private const int WaveformCount = 8;
+    private const int WaveformPhaseCount = 1_024;
+#if NET10_0_OR_GREATER
+    private const int LinearEnvelopeLevelCount = 384;
+#endif
+
     private static readonly ushort[] LogSinRomData =
     [
         0x859, 0x6c3, 0x607, 0x58b, 0x52e, 0x4e4, 0x4a6, 0x471,
@@ -79,6 +89,9 @@ internal static class Opl3Tables
 
     private static readonly ushort[] WaveformData = BuildWaveformData();
     private static readonly ushort[] ExpRomData = BuildExpRomData();
+#if NET10_0_OR_GREATER
+    private static readonly short[] LinearWaveformData = BuildLinearWaveformData();
+#endif
 
     private static ushort[] BuildExpRomData()
     {
@@ -128,8 +141,8 @@ internal static class Opl3Tables
 
     private static ushort[] BuildWaveformData()
     {
-        var data = new ushort[8 * 1_024];
-        for (var phase = 0; phase < 1_024; phase++)
+        var data = new ushort[WaveformCount * WaveformPhaseCount];
+        for (var phase = 0; phase < WaveformPhaseCount; phase++)
         {
             var quarterWave = (phase & 0x100) != 0
                 ? LogSinRomData[(phase & 0xff) ^ 0xff]
@@ -153,6 +166,32 @@ internal static class Opl3Tables
 
         return data;
     }
+
+#if NET10_0_OR_GREATER
+    private static short[] BuildLinearWaveformData()
+    {
+        var data = GC.AllocateUninitializedArray<short>(LinearEnvelopeLevelCount * WaveformData.Length);
+        for (var envelope = 0; envelope < LinearEnvelopeLevelCount; envelope++)
+        {
+            var destinationOffset = envelope * WaveformData.Length;
+            for (var waveformIndex = 0; waveformIndex < WaveformData.Length; waveformIndex++)
+            {
+                var waveform = WaveformData[waveformIndex];
+                var negativeMask = (ushort)((short)waveform >> 15);
+                var level = (uint)((waveform & 0x7fff) + (envelope << 3));
+                if (level > 0x1fff)
+                {
+                    level = 0x1fff;
+                }
+
+                var sample = (ushort)(ExpRomData[level & 0xff] >> (int)(level >> 8));
+                data[destinationOffset + waveformIndex] = unchecked((short)(sample ^ negativeMask));
+            }
+        }
+
+        return data;
+    }
+#endif
 
     private static readonly byte[] FrequencyMultiplierData =
     [
@@ -210,6 +249,174 @@ internal static class Opl3Tables
         { 1, 1, 1, 0 }
     };
 
+#if NET10_0_OR_GREATER
+    private const int EnvelopeRateDescriptorCount = 65;
+    private const int EnvelopeTransitionCount = 1 << 20;
+    private static readonly byte[] EnvelopeShiftData = BuildEnvelopeShiftData();
+    private static readonly ushort[] EnvelopeTransitionData = BuildEnvelopeTransitionData();
+
+    private static byte[] BuildEnvelopeShiftData()
+    {
+        var data = new byte[2 * 14 * 4 * EnvelopeRateDescriptorCount];
+        for (var envelopeState = 0; envelopeState < 2; envelopeState++)
+        {
+            for (var envelopeAdd = 0; envelopeAdd < 14; envelopeAdd++)
+            {
+                for (var timerLow = 0; timerLow < 4; timerLow++)
+                {
+                    var destinationOffset = (((envelopeState * 14) + envelopeAdd) * 4 + timerLow)
+                                            * EnvelopeRateDescriptorCount;
+                    for (var descriptor = 1; descriptor < EnvelopeRateDescriptorCount; descriptor++)
+                    {
+                        var rate = descriptor - 1;
+                        var rateHigh = rate >> 2;
+                        var rateLow = rate & 0x03;
+                        var shift = 0;
+                        if (rateHigh < 12)
+                        {
+                            if (envelopeState != 0)
+                            {
+                                shift = (rateHigh + envelopeAdd) switch
+                                {
+                                    12 => 1,
+                                    13 => (rateLow >> 1) & 0x01,
+                                    14 => rateLow & 0x01,
+                                    _ => 0
+                                };
+                            }
+                        }
+                        else
+                        {
+                            shift = (rateHigh & 0x03) + EgIncrementSteps[rateLow, timerLow];
+                            if ((shift & 0x04) != 0)
+                            {
+                                shift = 0x03;
+                            }
+
+                            if (shift == 0)
+                            {
+                                shift = envelopeState;
+                            }
+                        }
+
+                        data[destinationOffset + descriptor] = (byte)shift;
+                    }
+                }
+            }
+        }
+
+        return data;
+    }
+
+    private static ushort[] BuildEnvelopeTransitionData()
+    {
+        var data = GC.AllocateUninitializedArray<ushort>(EnvelopeTransitionCount);
+        for (var index = 0; index < data.Length; index++)
+        {
+            var currentOutput = index & 0x1ff;
+            var stage = (index >> 9) & 0x03;
+            var keyOn = ((index >> 11) & 0x01) != 0;
+            var shift = (index >> 12) & 0x03;
+            var rateHighIsMaximum = ((index >> 14) & 0x01) != 0;
+            var sustainLevel = (index >> 15) & 0x1f;
+            var reset = keyOn && stage == (byte)EnvelopeGeneratorStage.Release;
+            var envelopeOutput = currentOutput;
+            var envelopeIncrement = 0;
+            var envelopeOff = (currentOutput & 0x1f8) == 0x1f8;
+
+            if (reset && rateHighIsMaximum)
+            {
+                envelopeOutput = 0;
+            }
+
+            if (stage != (byte)EnvelopeGeneratorStage.Attack && !reset && envelopeOff)
+            {
+                envelopeOutput = 0x1ff;
+            }
+
+            switch ((EnvelopeGeneratorStage)stage)
+            {
+                case EnvelopeGeneratorStage.Attack:
+                    if (currentOutput == 0)
+                    {
+                        stage = (byte)EnvelopeGeneratorStage.Decay;
+                    }
+                    else if (keyOn && shift > 0 && !rateHighIsMaximum)
+                    {
+                        envelopeIncrement = ~currentOutput >> (4 - shift);
+                    }
+
+                    break;
+
+                case EnvelopeGeneratorStage.Decay:
+                    if (currentOutput >> 4 == sustainLevel)
+                    {
+                        stage = (byte)EnvelopeGeneratorStage.Sustain;
+                    }
+                    else if (!envelopeOff && !reset && shift > 0)
+                    {
+                        envelopeIncrement = 1 << (shift - 1);
+                    }
+
+                    break;
+
+                case EnvelopeGeneratorStage.Sustain:
+                case EnvelopeGeneratorStage.Release:
+                    if (!envelopeOff && !reset && shift > 0)
+                    {
+                        envelopeIncrement = 1 << (shift - 1);
+                    }
+
+                    break;
+            }
+
+            envelopeOutput = (envelopeOutput + envelopeIncrement) & 0x1ff;
+            if (reset)
+            {
+                stage = (byte)EnvelopeGeneratorStage.Attack;
+            }
+
+            if (!keyOn)
+            {
+                stage = (byte)EnvelopeGeneratorStage.Release;
+            }
+
+            data[index] = (ushort)(envelopeOutput | (stage << 9) | (reset ? 1 << 11 : 0));
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    ///     Encodes the global envelope clock into the base offset shared by all operator-rate lookups for one sample.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int GetEnvelopeShiftTableOffset(byte envelopeState, byte envelopeAdd, byte timerLow)
+    {
+        return (((envelopeState * 14) + envelopeAdd) * 4 + timerLow) * EnvelopeRateDescriptorCount;
+    }
+
+    /// <summary>
+    ///     Reads the envelope increment shift for a proven clock offset and resolved rate descriptor.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static byte ReadEnvelopeShift(int index)
+    {
+        Debug.Assert((uint)index < EnvelopeShiftData.Length);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(EnvelopeShiftData), index);
+    }
+
+    /// <summary>
+    ///     Reads a packed next envelope output, stage, and phase-reset flag for a proven transition index.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ushort ReadEnvelopeTransition(int index)
+    {
+        Debug.Assert((uint)index < EnvelopeTransitionData.Length);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(EnvelopeTransitionData), index);
+    }
+#endif
+
     /// <summary>
     ///     Reads one logarithmic waveform entry for a ten-bit phase.
     /// </summary>
@@ -219,10 +426,31 @@ internal static class Opl3Tables
         return WaveformData[(waveform << 10) + phase];
     }
 
+#if NET10_0_OR_GREATER
+    /// <summary>
+    ///     Reads the final linear sample for a proven audible envelope level and ten-bit waveform phase.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static short ReadLinearWaveform(int envelope, int waveform, int phase)
+    {
+        var index = (envelope << 13) + (waveform << 10) + phase;
+        Debug.Assert((uint)index < LinearWaveformData.Length);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(LinearWaveformData), index);
+    }
+#endif
+
+    /// <summary>
+    ///     Reads one pre-shifted exponential entry for a proven eight-bit index.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ushort ReadExp(int index)
     {
+#if NET8_0_OR_GREATER
+        Debug.Assert((uint)index < ExpRomData.Length);
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(ExpRomData), index);
+#else
         return ExpRomData[index];
+#endif
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

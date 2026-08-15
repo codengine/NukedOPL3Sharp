@@ -4,6 +4,9 @@
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
+#if NET10_0_OR_GREATER
+using System.Runtime.InteropServices;
+#endif
 
 namespace NukedOPL3Sharp;
 
@@ -42,14 +45,15 @@ public sealed partial class Opl3Chip
             slot.VibratoPhaseIncrements[vibratoPosition] =
                 (((uint)fNumber << channel.Block) >> 1) * multiplier >> 1;
         }
+
+        slot.CurrentVibratoPhaseIncrement = slot.VibratoPhaseIncrements[chip.VibratoPosition];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void PhaseGenerateNormal(Opl3Operator slot)
     {
-        var chip = slot.Chip ?? throw new InvalidOperationException("Slot chip not assigned.");
         var phaseIncrement = slot.RegVibrato != 0
-            ? slot.VibratoPhaseIncrements[chip.VibratoPosition]
+            ? slot.CurrentVibratoPhaseIncrement
             : slot.PhaseIncrement;
         var phase = (ushort)(slot.RegPhaseGeneratorAccumulator >> 9);
         if (slot.RegPhaseResetRequest != 0)
@@ -66,7 +70,7 @@ public sealed partial class Opl3Chip
     {
         var chip = slot.Chip ?? throw new InvalidOperationException("Slot chip not assigned.");
         var phaseIncrement = slot.RegVibrato != 0
-            ? slot.VibratoPhaseIncrements[chip.VibratoPosition]
+            ? slot.CurrentVibratoPhaseIncrement
             : slot.PhaseIncrement;
         var phase = (ushort)(slot.RegPhaseGeneratorAccumulator >> 9);
         if (slot.RegPhaseResetRequest != 0)
@@ -746,7 +750,7 @@ public sealed partial class Opl3Chip
             slot.EnvelopeGeneratorState = (byte)EnvelopeGeneratorStage.Release;
 
             var phaseIncrement = slot.RegVibrato != 0
-                ? slot.VibratoPhaseIncrements[chip.VibratoPosition]
+                ? slot.CurrentVibratoPhaseIncrement
                 : slot.PhaseIncrement;
             var phase = (ushort)(slot.RegPhaseGeneratorAccumulator >> 9);
             slot.RegPhaseGeneratorAccumulator = unchecked(slot.RegPhaseGeneratorAccumulator + phaseIncrement);
@@ -819,6 +823,14 @@ public sealed partial class Opl3Chip
             if (slot.ModulationSource.CanRemainZero(slot, writeGeneration))
             {
                 slot.DormantGeneration = writeGeneration;
+                var channel = slot.Channel ?? throw new InvalidOperationException("Slot channel not assigned.");
+                if (channel.Slotz[0].DormantGeneration == writeGeneration
+                    && channel.Slotz[1].DormantGeneration == writeGeneration)
+                {
+                    var chip = channel.Chip ?? throw new InvalidOperationException("Channel chip not assigned.");
+                    chip.ActiveChannelMask &= ~(1u << channel.ChannelNumber);
+                    chip.MixListsDirty = true;
+                }
             }
 
             return;
@@ -835,6 +847,38 @@ public sealed partial class Opl3Chip
         ProcessSlotIfActive(channel.Slotz[1], feedback, maybeRhythm, writeGeneration);
     }
 
+#if NET10_0_OR_GREATER
+    private void RefreshInactiveRhythmPhaseBits()
+    {
+        var hihatPhase = Slots[13].PhaseGeneratorOutput;
+        RhythmHihatBit2 = (byte)((hihatPhase >> 2) & 1);
+        RhythmHihatBit3 = (byte)((hihatPhase >> 3) & 1);
+        RhythmHihatBit7 = (byte)((hihatPhase >> 7) & 1);
+        RhythmHihatBit8 = (byte)((hihatPhase >> 8) & 1);
+    }
+#endif
+
+#if NET10_0_OR_GREATER
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int SumMixEntry(ref MixEntry entry, bool right)
+    {
+        var sum = right ? entry.RightOutput0.Read() : entry.LeftOutput0.Read();
+        if (entry.OutputCount > 1)
+        {
+            sum += right ? entry.RightOutput1.Read() : entry.LeftOutput1.Read();
+            if (entry.OutputCount > 2)
+            {
+                sum += right ? entry.RightOutput2.Read() : entry.LeftOutput2.Read();
+                if (entry.OutputCount > 3)
+                {
+                    sum += right ? entry.RightOutput3.Read() : entry.LeftOutput3.Read();
+                }
+            }
+        }
+
+        return sum;
+    }
+#else
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int SumChannelOutputs(ShortSignalSource[] outputs, byte outputCount)
     {
@@ -854,11 +898,16 @@ public sealed partial class Opl3Chip
 
         return sum;
     }
+#endif
 
     private void RebuildMixLists()
     {
+#if NET10_0_OR_GREATER
+        byte count = 0;
+#else
         byte leftCount = 0;
         byte rightCount = 0;
+#endif
         foreach (var channel in Channels)
         {
             if (channel.OutputCount == 0)
@@ -866,6 +915,53 @@ public sealed partial class Opl3Chip
                 continue;
             }
 
+            var channelBit = 1u << channel.ChannelNumber;
+            if ((ActiveChannelMask & channelBit) == 0
+                && ((channel.Algorithm & 0x04) == 0 || channel.Pair is not { } pair
+                    || (ActiveChannelMask & (1u << pair.ChannelNumber)) == 0))
+            {
+                continue;
+            }
+
+#if NET10_0_OR_GREATER
+#if OPL_ENABLE_STEREOEXT
+            var leftEnabled = (channel.LeftPan | channel.Chc) != 0;
+            var rightEnabled = (channel.RightPan | channel.Chd) != 0;
+#else
+            var leftEnabled = (channel.Cha | channel.Chc) != 0;
+            var rightEnabled = (channel.Chb | channel.Chd) != 0;
+#endif
+            if (!leftEnabled && !rightEnabled)
+            {
+                continue;
+            }
+
+            ref var entry = ref _mixEntries[count++];
+            entry.LeftOutput0 = channel.LeftOutputs[0];
+            entry.LeftOutput1 = channel.LeftOutputs[1];
+            entry.LeftOutput2 = channel.LeftOutputs[2];
+            entry.LeftOutput3 = channel.LeftOutputs[3];
+            entry.RightOutput0 = channel.RightOutputs[0];
+            entry.RightOutput1 = channel.RightOutputs[1];
+            entry.RightOutput2 = channel.RightOutputs[2];
+            entry.RightOutput3 = channel.RightOutputs[3];
+            entry.Channel = channel;
+            entry.OutputCount = channel.OutputCount;
+            var sharedOutputs = leftEnabled && rightEnabled
+                                && entry.LeftOutput0.ReadsSameSignalAs(entry.RightOutput0)
+                                && (entry.OutputCount < 2 || entry.LeftOutput1.ReadsSameSignalAs(entry.RightOutput1))
+                                && (entry.OutputCount < 3 || entry.LeftOutput2.ReadsSameSignalAs(entry.RightOutput2))
+                                && (entry.OutputCount < 4 || entry.LeftOutput3.ReadsSameSignalAs(entry.RightOutput3));
+#if OPL_ENABLE_STEREOEXT
+            const bool allMixOutputsEnabled = false;
+#else
+            var allMixOutputsEnabled = channel.Cha == ushort.MaxValue && channel.Chb == ushort.MaxValue
+                                       && channel.Chc == ushort.MaxValue && channel.Chd == ushort.MaxValue;
+#endif
+            entry.Routes = (byte)((leftEnabled ? LeftMixEnabled : 0) | (rightEnabled ? RightMixEnabled : 0)
+                                  | (sharedOutputs ? SharedMixOutputs : 0)
+                                  | (allMixOutputsEnabled ? AllMixOutputsEnabled : 0));
+#else
 #if OPL_ENABLE_STEREOEXT
             if ((channel.LeftPan | channel.Chc) != 0)
 #else
@@ -883,13 +979,81 @@ public sealed partial class Opl3Chip
             {
                 RightMixChannels[rightCount++] = channel;
             }
+#endif
         }
 
+#if NET10_0_OR_GREATER
+        _mixEntryCount = count;
+#else
         LeftMixChannelCount = leftCount;
         RightMixChannelCount = rightCount;
+#endif
         MixListsDirty = false;
     }
 
+#if NET10_0_OR_GREATER
+    private void MixOutputBuses()
+    {
+        var mix0 = 0;
+        var mix1 = 0;
+        var mix2 = 0;
+        var mix3 = 0;
+        var allBusLeftMix = 0;
+        var allBusRightMix = 0;
+        for (var index = 0; index < _mixEntryCount; index++)
+        {
+            ref var entry = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_mixEntries), index);
+            var channel = entry.Channel;
+            var routes = entry.Routes;
+            if ((routes & AllMixOutputsEnabled) != 0)
+            {
+                var allBusLeftSample = (int)(short)SumMixEntry(ref entry, false);
+                allBusLeftMix = unchecked(allBusLeftMix + allBusLeftSample);
+                if ((routes & SharedMixOutputs) != 0)
+                {
+                    allBusRightMix = unchecked(allBusRightMix + allBusLeftSample);
+                }
+                else
+                {
+                    var allBusRightSample = (int)(short)SumMixEntry(ref entry, true);
+                    allBusRightMix = unchecked(allBusRightMix + allBusRightSample);
+                }
+
+                continue;
+            }
+
+            var leftSample = 0;
+            if ((routes & LeftMixEnabled) != 0)
+            {
+                leftSample = SumMixEntry(ref entry, false);
+#if OPL_ENABLE_STEREOEXT
+                mix0 = unchecked(mix0 + (short)(((long)(short)leftSample * channel.LeftPan) >> 16));
+#else
+                mix0 = unchecked(mix0 + (short)(leftSample & channel.Cha));
+#endif
+                mix2 = unchecked(mix2 + (short)(leftSample & channel.Chc));
+            }
+
+            if ((routes & RightMixEnabled) != 0)
+            {
+                var rightSample = (routes & SharedMixOutputs) != 0
+                    ? leftSample
+                    : SumMixEntry(ref entry, true);
+#if OPL_ENABLE_STEREOEXT
+                mix1 = unchecked(mix1 + (short)(((long)(short)rightSample * channel.RightPan) >> 16));
+#else
+                mix1 = unchecked(mix1 + (short)(rightSample & channel.Chb));
+#endif
+                mix3 = unchecked(mix3 + (short)(rightSample & channel.Chd));
+            }
+        }
+
+        MixBuffer[0] = unchecked(mix0 + allBusLeftMix);
+        MixBuffer[1] = unchecked(mix1 + allBusRightMix);
+        MixBuffer[2] = unchecked(mix2 + allBusLeftMix);
+        MixBuffer[3] = unchecked(mix3 + allBusRightMix);
+    }
+#else
     private void MixRight()
     {
         var front = 0;
@@ -909,9 +1073,41 @@ public sealed partial class Opl3Chip
         MixBuffer[1] = front;
         MixBuffer[3] = rear;
     }
+#endif
 
     /* Original C: void OPL3_Generate4Ch(opl3_chip *chip, int16_t *buf4) */
     private void Generate4ChCore(Span<short> buffer)
+    {
+#if NET10_0_OR_GREATER
+        EnvelopeShiftTableOffset = Opl3Tables.GetEnvelopeShiftTableOffset(EgState, EgAdd, EgTimerLow);
+#endif
+        if (CachedVibratoPosition != VibratoPosition)
+        {
+            RefreshCurrentVibratoPhaseIncrements();
+        }
+
+        if (ActiveChannelMask == AllChannelsMask)
+        {
+            Generate4ChActiveCore(buffer);
+        }
+        else
+        {
+            Generate4ChSparseCore(buffer);
+        }
+    }
+
+    private void RefreshCurrentVibratoPhaseIncrements()
+    {
+        var vibratoPosition = VibratoPosition;
+        foreach (var slot in Slots)
+        {
+            slot.CurrentVibratoPhaseIncrement = slot.VibratoPhaseIncrements[vibratoPosition];
+        }
+
+        CachedVibratoPosition = vibratoPosition;
+    }
+
+    private void Generate4ChActiveCore(Span<short> buffer)
     {
         if (buffer.Length < 4)
         {
@@ -929,18 +1125,32 @@ public sealed partial class Opl3Chip
         AdvanceNoise();
 
         var writeGeneration = WriteGeneration;
+#if NET10_0_OR_GREATER
+        var rhythmActive = (Rhythm & 0x20) != 0;
+#else
+        const bool rhythmActive = true;
+#endif
         for (var channelIndex = 0; channelIndex < 7; channelIndex++)
         {
             ProcessChannelSlots(Channels[channelIndex], false, writeGeneration);
         }
 
-        ProcessChannelSlots(Channels[7], true, writeGeneration);
-        ProcessChannelSlots(Channels[8], true, writeGeneration);
+        ProcessChannelSlots(Channels[7], rhythmActive, writeGeneration);
+        ProcessChannelSlots(Channels[8], rhythmActive, writeGeneration);
         for (var channelIndex = 9; channelIndex < Channels.Length; channelIndex++)
         {
             ProcessChannelSlots(Channels[channelIndex], false, writeGeneration);
         }
+#if NET10_0_OR_GREATER
+        if (!rhythmActive)
+        {
+            RefreshInactiveRhythmPhaseBits();
+        }
+#endif
 
+#if NET10_0_OR_GREATER
+        MixOutputBuses();
+#else
         var mix0 = 0;
         var mix1 = 0;
         for (var index = 0; index < LeftMixChannelCount; index++)
@@ -957,6 +1167,7 @@ public sealed partial class Opl3Chip
 
         MixBuffer[0] = mix0;
         MixBuffer[2] = mix1;
+#endif
         buffer[0] = ClipSample(MixBuffer[0]);
         buffer[2] = ClipSample(MixBuffer[2]);
 
@@ -1004,7 +1215,158 @@ public sealed partial class Opl3Chip
 
         EgState ^= 1;
 
+#if !NET10_0_OR_GREATER
         MixRight();
+#endif
+
+        while (true)
+        {
+            var entry = WriteBuffer[(int)WriteBufferCurrent];
+            if (entry.Time > WriteBufferSampleCounter)
+            {
+                break;
+            }
+
+            if ((entry.Register & 0x200) == 0)
+            {
+                break;
+            }
+
+            var reg = (ushort)(entry.Register & 0x1ff);
+            entry.Register = reg;
+            WriteRegisterInternal(reg, entry.Data);
+            WriteBufferCurrent = (WriteBufferCurrent + 1) % WriteBufferSize;
+        }
+
+        WriteBufferSampleCounter++;
+    }
+
+    private void Generate4ChSparseCore(Span<short> buffer)
+    {
+        if (buffer.Length < 4)
+        {
+            throw new ArgumentException("Buffer must contain at least four samples.", nameof(buffer));
+        }
+
+        buffer[1] = ClipSample(MixBuffer[1]);
+        buffer[3] = ClipSample(MixBuffer[3]);
+
+        if (MixListsDirty)
+        {
+            RebuildMixLists();
+        }
+
+        AdvanceNoise();
+
+        var writeGeneration = WriteGeneration;
+        var activeChannelMask = ActiveChannelMask;
+#if NET10_0_OR_GREATER
+        var rhythmActive = (Rhythm & 0x20) != 0;
+#else
+        const bool rhythmActive = true;
+#endif
+        for (var channelIndex = 0; channelIndex < 7; channelIndex++)
+        {
+            if ((activeChannelMask & (1u << channelIndex)) != 0)
+            {
+                ProcessChannelSlots(Channels[channelIndex], false, writeGeneration);
+            }
+        }
+
+        if ((activeChannelMask & (1u << 7)) != 0)
+        {
+            ProcessChannelSlots(Channels[7], rhythmActive, writeGeneration);
+        }
+
+        if ((activeChannelMask & (1u << 8)) != 0)
+        {
+            ProcessChannelSlots(Channels[8], rhythmActive, writeGeneration);
+        }
+#if NET10_0_OR_GREATER
+        if (!rhythmActive)
+        {
+            RefreshInactiveRhythmPhaseBits();
+        }
+#endif
+
+        for (var channelIndex = 9; channelIndex < Channels.Length; channelIndex++)
+        {
+            if ((activeChannelMask & (1u << channelIndex)) != 0)
+            {
+                ProcessChannelSlots(Channels[channelIndex], false, writeGeneration);
+            }
+        }
+
+#if NET10_0_OR_GREATER
+        MixOutputBuses();
+#else
+        var mix0 = 0;
+        var mix1 = 0;
+        for (var index = 0; index < LeftMixChannelCount; index++)
+        {
+            var channel = LeftMixChannels[index];
+            var channelSample = SumChannelOutputs(channel.LeftOutputs, channel.OutputCount);
+#if OPL_ENABLE_STEREOEXT
+            mix0 = unchecked(mix0 + (short)(((long)(short)channelSample * channel.LeftPan) >> 16));
+#else
+            mix0 = unchecked(mix0 + (short)(channelSample & channel.Cha));
+#endif
+            mix1 = unchecked(mix1 + (short)(channelSample & channel.Chc));
+        }
+
+        MixBuffer[0] = mix0;
+        MixBuffer[2] = mix1;
+#endif
+        buffer[0] = ClipSample(MixBuffer[0]);
+        buffer[2] = ClipSample(MixBuffer[2]);
+
+        Opl3Lfo.Advance(this);
+
+        Timer++;
+
+        if (EgState != 0)
+        {
+            var envelopeTimerLow = (uint)EgTimer & 0x1fffu;
+            if (envelopeTimerLow == 0)
+            {
+                EgAdd = 0;
+            }
+            else
+            {
+#if NETSTANDARD2_1
+                byte shift = 0;
+                while (((envelopeTimerLow >> shift) & 1) == 0)
+                {
+                    shift++;
+                }
+#else
+                var shift = BitOperations.TrailingZeroCount(envelopeTimerLow);
+#endif
+                EgAdd = (byte)(shift + 1);
+            }
+
+            EgTimerLow = (byte)(EgTimer & 0x03u);
+        }
+
+        if (EgTimerRem != 0 || EgState != 0)
+        {
+            if (EgTimer == 0x0FFFFFFFFFUL)
+            {
+                EgTimer = 0;
+                EgTimerRem = 1;
+            }
+            else
+            {
+                EgTimer++;
+                EgTimerRem = 0;
+            }
+        }
+
+        EgState ^= 1;
+
+#if !NET10_0_OR_GREATER
+        MixRight();
+#endif
 
         while (true)
         {
@@ -1131,13 +1493,19 @@ public sealed partial class Opl3Chip
         Nts = 0;
         Rhythm = 0;
         Opl3Lfo.Reset(this);
+        CachedVibratoPosition = 0;
         TremoloDirty = false;
         Noise = 1;
         NoiseHihat = 0;
         NoiseSnare = 0;
         WriteGeneration = 1;
+        ActiveChannelMask = AllChannelsMask;
+#if NET10_0_OR_GREATER
+        _mixEntryCount = 0;
+#else
         LeftMixChannelCount = 0;
         RightMixChannelCount = 0;
+#endif
         MixListsDirty = true;
         ZeroMod = 0;
         Array.Clear(MixBuffer, 0, MixBuffer.Length);
@@ -1189,8 +1557,12 @@ public sealed partial class Opl3Chip
             slot.CachedEnvelopeAttenuation = 0;
             slot.CachedEnvelopeKeyScale = 0;
             Array.Clear(slot.EnvelopeRates, 0, slot.EnvelopeRates.Length);
+#if NET10_0_OR_GREATER
+            Array.Clear(slot.ResolvedEnvelopeRates, 0, slot.ResolvedEnvelopeRates.Length);
+#else
             Array.Clear(slot.EnvelopeRateHigh, 0, slot.EnvelopeRateHigh.Length);
             Array.Clear(slot.EnvelopeRateLow, 0, slot.EnvelopeRateLow.Length);
+#endif
             slot.TremoloEnabled = false;
             slot.RegVibrato = 0;
             slot.RegOperatorType = 0;
@@ -1207,6 +1579,7 @@ public sealed partial class Opl3Chip
             slot.RegPhaseResetRequest = 0;
             slot.RegPhaseGeneratorAccumulator = 0;
             slot.PhaseIncrement = 0;
+            slot.CurrentVibratoPhaseIncrement = 0;
             Array.Clear(slot.VibratoPhaseIncrements, 0, slot.VibratoPhaseIncrements.Length);
             slot.PhaseGeneratorOutput = 0;
             slot.SlotIndex = (byte)slotIndex;
@@ -1270,6 +1643,12 @@ public sealed partial class Opl3Chip
     /* Original C: void OPL3_WriteReg(opl3_chip *chip, uint16_t reg, uint8_t v) */
     private void WriteRegisterInternal(ushort register, byte value)
     {
+        if (ActiveChannelMask != AllChannelsMask)
+        {
+            ActiveChannelMask = AllChannelsMask;
+            MixListsDirty = true;
+        }
+
         WriteGeneration = unchecked(WriteGeneration + 1);
         if (WriteGeneration == 0)
         {
@@ -1508,4 +1887,5 @@ public sealed partial class Opl3Chip
                 ref discardRearRight);
         }
     }
+
 }
